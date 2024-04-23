@@ -1,0 +1,1766 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Reference Architecture to host Moodle on AWS - Creates Moodle web Auto Scaling group
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Web Parameters
+      Parameters:
+        - EC2KeyName
+        - WebInstanceType
+        - WebAsgMax
+        - WebAsgMin
+        - WebSecurityGroup
+        - Subnet
+        - PublicAlbTargetGroupArn
+        - PublicAlbHostname
+        - NasPrivateIp
+    - Label:
+        default: Moodle Parameters
+      Parameters:
+        - DomainName
+        - MoodleLocale
+    - Label:
+        default: Database Parameters
+      Parameters:
+        - DatabaseClusterEndpointAddress
+        - DatabaseName
+        - DatabaseEngine
+        # - DatabaseMasterUsername
+        # - DatabaseMasterPassword
+        - DatabaseClusterEndpointAddress
+        - ElastiCacheClusterEndpointAddress
+    ParameterLabels:
+      DatabaseClusterEndpointAddress:
+        default: DB Cluster Endpoint Address
+      # DatabaseMasterUsername:
+      #   default: DB Master Username  
+      # DatabaseMasterPassword:
+      #   default: DB Master Password
+      DatabaseName:
+        default: DB Name
+      DatabaseEngine:
+        default: Auroa DB Engine
+      ElastiCacheClusterEndpointAddress:
+        default: ElastiCache Endpoint Address
+      EC2KeyName:
+        default: Existing Key Pair
+      PublicAlbTargetGroupArn:
+        default: Public ALB Target Group Arn
+      PublicAlbHostname:
+        default: Public ALB Hostname
+      Subnet:
+        default: Subnets
+      WebAsgMax:
+        default: Web ASG Max
+      WebAsgMin:
+        default: Web ASG Min
+      WebInstanceType:
+        default: Web Instance Type
+      WebSecurityGroup:
+        default: Web Security Group
+      DomainName:
+        default: Site Domain
+      MoodleLocale:
+        default: Language Code
+
+Parameters:
+  ElastiCacheClusterEndpointAddress:
+    Description: The ElastiCacheCluster cluster endpoint address.
+    Type: String
+  DatabaseClusterEndpointAddress:
+    Description: The RDS cluster endpoint address.
+    Type: String
+  DatabaseEngine:
+    AllowedValues:
+      - aurora-postgresql
+      - aurora-mysql
+    ConstraintDescription: Must be a valid RDS Aurora db engine.
+    Default: aurora-postgresql
+    Description: The Amazon RDS database engine.
+    Type: String
+  # DatabaseMasterUsername:
+  #   AllowedPattern: ^([a-zA-Z0-9]*)$
+  #   Description: The Amazon RDS master username.
+  #   ConstraintDescription: Must contain only alphanumeric characters and be at least 8 characters.
+  #   MaxLength: 16
+  #   MinLength: 1
+  #   Type: String
+  # DatabaseMasterPassword:
+  #   AllowedPattern: ^([a-z0-9A-Z`~!#$%^&*()_+,\\-])*$
+  #   ConstraintDescription: Must be letters (upper or lower), numbers, and these special characters '_'`~!#$%^&*()_+,-
+  #   Description: The Amazon RDS master password.
+  #   MaxLength: 41
+  #   MinLength: 8
+  #   NoEcho: true
+  #   Type: String
+  MyRDSInstanceSecretArn:
+    Type: String
+  DatabaseName:
+    AllowedPattern: ^([a-zA-Z0-9]*)$
+    Description: The Amazon RDS master database name.
+    Type: String
+    Default: moodle
+  EC2KeyName:
+    AllowedPattern: ^([a-zA-Z0-9 @.`~!#$%^&*()_+,\\-])*$
+    ConstraintDescription: Must be letters (upper or lower), numbers, and special characters.
+    Description: Name of an EC2 KeyPair. Your bastion & Web instances will launch with this KeyPair.
+    Type: AWS::EC2::KeyPair::KeyName
+  PublicAlbTargetGroupArn:
+    Description: The public application load balancer target group arn.
+    Type: String
+  PublicAlbHostname:
+    Description: The hostname of the public ALB http form (e.g. http://abdc-12345-xyz.<region>.elb.amazonaws.com)
+    Type: String
+  Subnet:
+    Description: Select existing subnets. The number selected must match the number of subnets above. Subnets selected must be in separate AZs.
+    Type: List<AWS::EC2::Subnet::Id>
+  WebAsgMax:
+    AllowedPattern: ^((?!0$)[1-2]?[0-9]|30)$
+    ConstraintDescription: Must be a number between 1 and 30.
+    Default: 4
+    Description: Specifies the maximum number of EC2 instances in the Web Autoscaling Group.
+    Type: String
+  WebAsgMin:
+    AllowedPattern: ^([0-0]?[0-9]|10)$
+    ConstraintDescription: Must be a number between 0 and 10.
+    Default: 2
+    Description: Specifies the minimum number of EC2 instances in the Web Autoscaling Group.
+    Type: String
+  WebInstanceType:
+    AllowedValues:
+    - t3.nano
+    - t3.micro
+    - t3.small
+    - t3.medium
+    - t3.large
+    - t3.xlarge
+    - t3.2xlarge
+    - m5.large
+    - m5.xlarge
+    - m5.2xlarge
+    - m5.4xlarge
+    - m5.12xlarge
+    - m5.24xlarge
+    - m6a.xlarge
+    - m6a.2xlarge
+    ConstraintDescription: Must be a valid Amazon EC2 instance type.
+    Default: m5.xlarge
+    Description: The Amazon EC2 instance type for your web instances.
+    Type: String
+  WebSecurityGroup:
+    Description: Select the web security group.
+    Type: AWS::EC2::SecurityGroup::Id
+  DomainName:
+    AllowedPattern: ^$|(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$
+    Description: '[ Optional ] The main domain name of the Moodle site (e.g. moodle.example.edu). Leave empty to use the ALB DNS name for the Moodle site.'
+    Type: String
+  MoodleLocale:
+    Description: The main language used in the Moodle configuration wizard.
+    Type: String
+    Default: en
+  LatestAmiId :
+    Type : AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+  NasPrivateIp:
+    Description: NAS ip address
+    Type: String
+
+Conditions:
+  DatabaseSelection:
+    !Equals [ 'aurora-postgresql', !Ref DatabaseEngine ]  
+
+Resources:
+  WebInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+      - !Ref WebInstanceRole
+  WebInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: /
+      ManagedPolicyArns: 
+      - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      Policies:
+      - PolicyName: logs
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            - logs:DescribeLogStreams
+            Resource:
+            - arn:aws:logs:*:*:*
+      - PolicyName: CompleteLifecycleAction
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action:
+            - autoscaling:CompleteLifecycleAction
+            - autoscaling:DescribeAutoScalingInstances
+            - autoscaling:DescribeLifecycleHooks
+            Resource:
+            - arn:aws:autoscaling:*:*:*
+      - PolicyName: SecretManager
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action:
+            - secretsmanager:GetSecretValue
+            Resource:
+            - !Ref MyRDSInstanceSecretArn
+  Logs: 
+      Type: AWS::Logs::LogGroup
+      DeletionPolicy: Retain
+      UpdateReplacePolicy: Retain
+      Properties: 
+        RetentionInDays: 30
+  WebAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      Cooldown: 60
+      HealthCheckGracePeriod: 360
+      HealthCheckType: ELB
+      LaunchConfigurationName: !Ref WebLaunchConfiguration
+      MaxSize: !Ref WebAsgMax
+      MinSize: !Ref WebAsgMin
+      Tags:
+        - Key: Name
+          Value: !Join [ '', [ 'Web ASG / ', !Ref 'AWS::StackName' ] ]
+          PropagateAtLaunch: true
+      TargetGroupARNs:
+        - !Ref PublicAlbTargetGroupArn
+      VPCZoneIdentifier: !Ref Subnet
+    CreationPolicy:
+      ResourceSignal:
+        Count: !Ref WebAsgMin
+        Timeout: PT15M
+        
+  ScaleUpPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName:
+        Ref: WebAutoScalingGroup
+      Cooldown: 300
+      ScalingAdjustment: 1
+  CPUAlarmHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      EvaluationPeriods: 3
+      Statistic: Average
+      Threshold: 60
+      AlarmDescription: Alarm if CPU too high
+      Period: 60
+      AlarmActions:
+      - Ref: ScaleUpPolicy
+      Namespace: AWS/EC2
+      Dimensions:
+      - Name: AutoScalingGroupName
+        Value: !Ref WebAutoScalingGroup
+      ComparisonOperator: GreaterThanThreshold
+      MetricName: CPUUtilization   
+  ScaleDownPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName:
+        Ref: WebAutoScalingGroup
+      Cooldown: 300
+      ScalingAdjustment: -1
+  CPUAlarmLow:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      EvaluationPeriods: 3
+      Statistic: Average
+      Threshold: 25
+      AlarmDescription: Alarm if CPU too low
+      Period: 60
+      AlarmActions:
+      - Ref: ScaleDownPolicy
+      Namespace: AWS/EC2
+      Dimensions:
+      - Name: AutoScalingGroupName
+        Value: !Ref WebAutoScalingGroup
+      ComparisonOperator: LessThanThreshold
+      MetricName: CPUUtilization   
+     
+  WebLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          deploy_webserver:
+            - install_logs
+            - install_webserver
+            - setup_webserver_tuning
+            - apply_webserver_tuning
+            - config_moodle
+            - install_cacheclient
+            - install_opcache
+            - start_webserver
+          default:
+            - 01_setupCfnHup
+            - 02_config-amazon-cloudwatch-agent
+            - 03_restart_amazon-cloudwatch-agent
+          UpdateEnvironment:
+            - 02_config-amazon-cloudwatch-agent
+            - 03_restart_amazon-cloudwatch-agent
+        # Definition of json configuration of AmazonCloudWatchAgent, you can change the configuration below.
+        02_config-amazon-cloudwatch-agent:
+          files:
+            '/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json':
+              content: !Sub |
+                {
+                  "metrics": {
+                    "append_dimensions": {
+                      "AutoScalingGroupName": "${!aws:AutoScalingGroupName}",
+                      "ImageId": "${!aws:ImageId}",
+                      "InstanceId": "${!aws:InstanceId}",
+                      "InstanceType": "${!aws:InstanceType}"
+                    },
+                    "metrics_collected": {
+                      "cpu": {
+                        "measurement": [
+                          "cpu_usage_idle",
+                          "cpu_usage_iowait",
+                          "cpu_usage_user",
+                          "cpu_usage_system"
+                        ],
+                        "metrics_collection_interval": 60,
+                        "resources": [
+                          "*"
+                        ],
+                        "totalcpu": false
+                      },
+                      "disk": {
+                        "measurement": [
+                          "used_percent",
+                          "inodes_free"
+                        ],
+                        "metrics_collection_interval": 60,
+                        "resources": [
+                          "*"
+                        ]
+                      },
+                      "diskio": {
+                        "measurement": [
+                          "io_time",
+                          "write_bytes",
+                          "read_bytes",
+                          "writes",
+                          "reads"
+                        ],
+                        "metrics_collection_interval": 60,
+                        "resources": [
+                          "*"
+                        ]
+                      },
+                      "mem": {
+                        "measurement": [
+                          "mem_used_percent"
+                        ],
+                        "metrics_collection_interval": 60
+                      },
+                      "netstat": {
+                        "measurement": [
+                          "tcp_established",
+                          "tcp_time_wait"
+                        ],
+                        "metrics_collection_interval": 60
+                      },
+                      "swap": {
+                        "measurement": [
+                          "swap_used_percent"
+                        ],
+                        "metrics_collection_interval": 60
+                      }
+                    }
+                  }
+                }
+        # Invoke amazon-cloudwatch-agent-ctl to restart the AmazonCloudWatchAgent.
+        03_restart_amazon-cloudwatch-agent:
+          commands:
+            01_stop_service:
+              command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a stop
+            02_start_service:
+              command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+        # Cfn-hup setting, it is to monitor the change of metadata.
+        # When there is change in the contents of json file in the metadata section, cfn-hup will call cfn-init to restart the AmazonCloudWatchAgent.
+        01_setupCfnHup:
+          files:
+             '/etc/cfn/cfn-hup.conf':
+               content: !Sub |
+                 [main]
+                 stack=${AWS::StackId}
+                 region=${AWS::Region}
+                 interval=1
+               mode: '000400'
+               owner: root
+               group: root
+             '/etc/cfn/hooks.d/amazon-cloudwatch-agent-auto-reloader.conf':
+               content: !Sub |
+                 [cfn-auto-reloader-hook]
+                 triggers=post.update
+                 path=Resources.WebLaunchConfiguration.Metadata.AWS::CloudFormation::Init.02_config-amazon-cloudwatch-agent
+                 action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource WebLaunchConfiguration --region ${AWS::Region} --configsets UpdateEnvironment
+                 runas=root
+               mode: '000400'
+               owner: root
+               group: root
+             "/lib/systemd/system/cfn-hup.service":
+                content: !Sub |
+                  [Unit]
+                  Description=cfn-hup daemon
+                  [Service]
+                  Type=simple
+                  ExecStart=/opt/aws/bin/cfn-hup
+                  Restart=always
+                  [Install]
+                  WantedBy=multi-user.target
+          commands:
+            01enable_cfn_hup:
+              command: !Sub |
+                systemctl enable cfn-hup.service
+            02start_cfn_hup:
+              command: !Sub |
+                systemctl start cfn-hup.service
+        install_webserver:
+          files:
+            /tmp/create_site_conf.sh:
+              content: !If
+                - DatabaseSelection
+                - !Sub |
+                  #!/bin/bash -xe
+                  amazon-linux-extras install -y php7.3 postgresql9.6
+                  #edit date 11/4/2023 for install sodium lib.
+                  yum install -y awslogs httpd php-pgsql php-gd php-soap php-intl php-mbstring php-xmlrpc php-zip php-pear re2c php-devel libsodium libsodium-devel gcc
+                  pecl install libsodium 
+                  echo 'extension=sodium.so' >> /etc/php.ini
+
+                  #add new for test deploy 06/09/23 for fix proxy timeout 60s
+                  yum install mod_fcgid -y
+                  touch /etc/httpd/conf.modules.d/00-proxy_timeout.conf
+                  echo 'Timeout 180' >> /etc/httpd/conf.modules.d/00-proxy_timeout.conf
+                  echo 'ProxyTimeout 180'>> /etc/httpd/conf.modules.d/00-proxy_timeout.conf
+
+                  #Add revise date 06/09/23
+                  sed -i 's/memory_limit =.*/memory_limit = 2048M/' /etc/php.ini
+                  sed -i 's/max_execution_time =.*/max_execution_time = 300/' /etc/php.ini
+                  sed -i 's/; max_input_vars =.*/max_input_vars = 5000/' /etc/php.ini
+                  sed -i 's/max_input_time =.*/max_input_time = 300/' /etc/php.ini
+                  sed -i 's/post_max_size =.*/post_max_size = 1024M/' /etc/php.ini
+                  sed -i 's/upload_max_filesize =.*/upload_max_filesize = 1024M/' /etc/php.ini
+                  if [ ! -f /etc/httpd/conf.d/moodle.conf ]; then                    
+                    touch /etc/httpd/conf.d/moodle.conf
+                    echo 'ServerName 127.0.0.1:80' >> /etc/httpd/conf.d/moodle.conf
+                    echo 'DocumentRoot /var/www/moodledata' >> /etc/httpd/conf.d/moodle.conf
+                    echo '<Directory /var/www/moodledata>' >> /etc/httpd/conf.d/moodle.conf
+                    echo '  Options Indexes FollowSymLinks' >> /etc/httpd/conf.d/moodle.conf
+                    echo '  AllowOverride All' >> /etc/httpd/conf.d/moodle.conf
+                    echo '  Require all granted' >> /etc/httpd/conf.d/moodle.conf
+                    echo '</Directory>' >> /etc/httpd/conf.d/moodle.conf
+                  fi
+                - !Sub |
+                  #!/bin/bash -xe
+                  amazon-linux-extras install -y php7.3
+                  #edit date 11/4/2023 for install sodium lib. 
+                  yum install -y awslogs httpd php-mysqlnd php-gd php-soap php-intl php-mbstring php-xmlrpc php-zip php-pear re2c php-devel libsodium libsodium-devel gcc
+                  pecl install libsodium 
+                  echo 'extension=sodium.so' >> /etc/php.ini
+                  #add new for test deploy 06/09/23 for fix proxy timeout 60s
+                  yum install mod_fcgid -y
+                  touch /etc/httpd/conf.modules.d/00-proxy_timeout.conf
+                  echo 'Timeout 180' /etc/httpd/conf.modules.d/00-proxy_timeout.conf
+                  echo 'ProxyTimeout 180' /etc/httpd/conf.modules.d/00-proxy_timeout.conf
+
+                  #Add revise date 06/09/23
+                  sed -i 's/memory_limit =.*/memory_limit = 2048M/' /etc/php.ini
+                  sed -i 's/max_execution_time =.*/max_execution_time = 300/' /etc/php.ini
+                  sed -i 's/; max_input_vars =.*/max_input_vars = 5000/' /etc/php.ini
+                  sed -i 's/max_input_time =.*/max_input_time = 300/' /etc/php.ini
+                  sed -i 's/post_max_size =.*/post_max_size = 1024M/' /etc/php.ini
+                  sed -i 's/upload_max_filesize =.*/upload_max_filesize = 1024M/' /etc/php.ini
+                  if [ ! -f /etc/httpd/conf.d/moodle.conf ]; then                    
+                    touch /etc/httpd/conf.d/moodle.conf
+                    echo 'ServerName 127.0.0.1:80' >> /etc/httpd/conf.d/moodle.conf
+                    echo 'DocumentRoot /var/www/moodledata' >> /etc/httpd/conf.d/moodle.conf
+                    echo '<Directory /var/www/moodledata>' >> /etc/httpd/conf.d/moodle.conf
+                    echo '  Options Indexes FollowSymLinks' >> /etc/httpd/conf.d/moodle.conf
+                    echo '  AllowOverride All' >> /etc/httpd/conf.d/moodle.conf
+                    echo '  Require all granted' >> /etc/httpd/conf.d/moodle.conf
+                    echo '</Directory>' >> /etc/httpd/conf.d/moodle.conf
+                  fi
+              mode: 000500
+              owner: root
+              group: root
+          commands:
+            create_site_conf:
+              command: ./create_site_conf.sh
+              cwd: /tmp
+              ignoreErrors: false
+        setup_webserver_tuning:
+          files:
+            /tmp/00-mpm.conf:
+              content: !Sub |
+                # Select the MPM module which should be used by uncommenting exactly
+                # one of the following LoadModule lines.  See the httpd.service(8) man
+                # page for more information on changing the MPM.
+
+                # prefork MPM: Implements a non-threaded, pre-forking web server
+                # See: http://httpd.apache.org/docs/2.4/mod/prefork.html
+                #
+                # NOTE: If enabling prefork, the httpd_graceful_shutdown SELinux
+                # boolean should be enabled, to allow graceful stop/shutdown.
+                #
+                #LoadModule mpm_prefork_module modules/mod_mpm_prefork.so
+
+                # worker MPM: Multi-Processing Module implementing a hybrid
+                # multi-threaded multi-process web server
+                # See: http://httpd.apache.org/docs/2.4/mod/worker.html
+                #
+                #LoadModule mpm_worker_module modules/mod_mpm_worker.so
+
+                # event MPM: A variant of the worker MPM with the goal of consuming
+                # threads only for connections with active processing
+                # See: http://httpd.apache.org/docs/2.4/mod/event.html
+                #
+                LoadModule mpm_event_module modules/mod_mpm_event.so 
+              mode: '000644'
+              owner: root
+              group: root
+            /tmp/mpm_event.conf:
+              content: !Sub |
+                # Optimized settings for avg. apache process 15MB and AWS EC2 m5.xlarge Server
+                <IfModule mpm_event_module>
+                  ServerLimit              3150
+                  StartServers             16
+                  MinSpareThreads          25
+                  MaxSpareThreads          75
+                  ThreadLimit              64
+                  ThreadsPerChild          25
+                  MaxRequestWorkers        3150
+                  MaxConnectionsPerChild   1000
+                </IfModule>
+              mode: '000644'
+              owner: root
+              group: root
+            /tmp/www.conf:
+              content: !Sub |
+                ; Start a new pool named 'www'.
+                ; the variable $pool can we used in any directive and will be replaced by the
+                ; pool name ('www' here)
+                [www]
+
+                ; Per pool prefix
+                ; It only applies on the following directives:
+                ; - 'access.log'
+                ; - 'slowlog'
+                ; - 'listen' (unixsocket)
+                ; - 'chroot'
+                ; - 'chdir'
+                ; - 'php_values'
+                ; - 'php_admin_values'
+                ; When not set, the global prefix (or @php_fpm_prefix@) applies instead.
+                ; Note: This directive can also be relative to the global prefix.
+                ; Default Value: none
+                ;prefix = /path/to/pools/$pool
+
+                ; Unix user/group of processes
+                ; Note: The user is mandatory. If the group is not set, the default user's group
+                ;       will be used.
+                ; RPM: apache user chosen to provide access to the same directories as httpd
+                user = apache
+                ; RPM: Keep a group allowed to write in log dir.
+                group = apache
+
+                ; The address on which to accept FastCGI requests.
+                ; Valid syntaxes are:
+                ;   'ip.add.re.ss:port'    - to listen on a TCP socket to a specific IPv4 address on
+                ;                            a specific port;
+                ;   '[ip:6:addr:ess]:port' - to listen on a TCP socket to a specific IPv6 address on
+                ;                            a specific port;
+                ;   'port'                 - to listen on a TCP socket to all addresses
+                ;                            (IPv6 and IPv4-mapped) on a specific port;
+                ;   '/path/to/unix/socket' - to listen on a unix socket.
+                ; Note: This value is mandatory.
+                listen = /run/php-fpm/www.sock
+
+                ; Set listen(2) backlog.
+                ; Default Value: 511
+                ;listen.backlog = 511
+
+                ; Set permissions for unix socket, if one is used. In Linux, read/write
+                ; permissions must be set in order to allow connections from a web server.
+                ; Default Values: user and group are set as the running user
+                ;                 mode is set to 0660
+                ;listen.owner = nobody
+                ;listen.group = nobody
+                ;listen.mode = 0660
+
+                ; When POSIX Access Control Lists are supported you can set them using
+                ; these options, value is a comma separated list of user/group names.
+                ; When set, listen.owner and listen.group are ignored
+                listen.acl_users = apache,nginx
+                ;listen.acl_groups =
+
+                ; List of addresses (IPv4/IPv6) of FastCGI clients which are allowed to connect.
+                ; Equivalent to the FCGI_WEB_SERVER_ADDRS environment variable in the original
+                ; PHP FCGI (5.2.2+). Makes sense only with a tcp listening socket. Each address
+                ; must be separated by a comma. If this value is left blank, connections will be
+                ; accepted from any ip address.
+                ; Default Value: any
+                listen.allowed_clients = 127.0.0.1
+
+                ; Specify the nice(2) priority to apply to the pool processes (only if set)
+                ; The value can vary from -19 (highest priority) to 20 (lower priority)
+                ; Note: - It will only work if the FPM master process is launched as root
+                ;       - The pool processes will inherit the master process priority
+                ;         unless it specified otherwise
+                ; Default Value: no set
+                ; process.priority = -19
+
+                ; Choose how the process manager will control the number of child processes.
+                ; Possible Values:
+                ;   static  - a fixed number (pm.max_children) of child processes;
+                ;   dynamic - the number of child processes are set dynamically based on the
+                ;             following directives. With this process management, there will be
+                ;             always at least 1 children.
+                ;             pm.max_children      - the maximum number of children that can
+                ;                                    be alive at the same time.
+                ;             pm.start_servers     - the number of children created on startup.
+                ;             pm.min_spare_servers - the minimum number of children in 'idle'
+                ;                                    state (waiting to process). If the number
+                ;                                    of 'idle' processes is less than this
+                ;                                    number then some children will be created.
+                ;             pm.max_spare_servers - the maximum number of children in 'idle'
+                ;                                    state (waiting to process). If the number
+                ;                                    of 'idle' processes is greater than this
+                ;                                    number then some children will be killed.
+                ;  ondemand - no children are created at startup. Children will be forked when
+                ;             new requests will connect. The following parameter are used:
+                ;             pm.max_children           - the maximum number of children that
+                ;                                         can be alive at the same time.
+                ;             pm.process_idle_timeout   - The number of seconds after which
+                ;                                         an idle process will be killed.
+                ; Note: This value is mandatory.
+                pm = dynamic
+
+                ; The number of child processes to be created when pm is set to 'static' and the
+                ; maximum number of child processes when pm is set to 'dynamic' or 'ondemand'.
+                ; This value sets the limit on the number of simultaneous requests that will be
+                ; served. Equivalent to the ApacheMaxClients directive with mpm_prefork.
+                ; Equivalent to the PHP_FCGI_CHILDREN environment variable in the original PHP
+                ; CGI. The below defaults are based on a server without much resources. Don't
+                ; forget to tweak pm.* to fit your needs.
+                ; Note: Used when pm is set to 'static', 'dynamic' or 'ondemand'
+                ; Note: This value is mandatory.
+                pm.max_children = 742
+
+                ; The number of child processes created on startup.
+                ; Note: Used only when pm is set to 'dynamic'
+                ; Default Value: min_spare_servers + (max_spare_servers - min_spare_servers) / 2
+                pm.start_servers = 64
+
+                ; The desired minimum number of idle server processes.
+                ; Note: Used only when pm is set to 'dynamic'
+                ; Note: Mandatory when pm is set to 'dynamic'
+                pm.min_spare_servers = 32
+
+                ; The desired maximum number of idle server processes.
+                ; Note: Used only when pm is set to 'dynamic'
+                ; Note: Mandatory when pm is set to 'dynamic'
+                pm.max_spare_servers = 64
+
+                ; The number of seconds after which an idle process will be killed.
+                ; Note: Used only when pm is set to 'ondemand'
+                ; Default Value: 10s
+                ;pm.process_idle_timeout = 10s;
+
+                ; The number of requests each child process should execute before respawning.
+                ; This can be useful to work around memory leaks in 3rd party libraries. For
+                ; endless request processing specify '0'. Equivalent to PHP_FCGI_MAX_REQUESTS.
+                ; Default Value: 0
+                pm.max_requests = 1000
+
+                ; The URI to view the FPM status page. If this value is not set, no URI will be
+                ; recognized as a status page. It shows the following informations:
+                ;   pool                 - the name of the pool;
+                ;   process manager      - static, dynamic or ondemand;
+                ;   start time           - the date and time FPM has started;
+                ;   start since          - number of seconds since FPM has started;
+                ;   accepted conn        - the number of request accepted by the pool;
+                ;   listen queue         - the number of request in the queue of pending
+                ;                          connections (see backlog in listen(2));
+                ;   max listen queue     - the maximum number of requests in the queue
+                ;                          of pending connections since FPM has started;
+                ;   listen queue len     - the size of the socket queue of pending connections;
+                ;   idle processes       - the number of idle processes;
+                ;   active processes     - the number of active processes;
+                ;   total processes      - the number of idle + active processes;
+                ;   max active processes - the maximum number of active processes since FPM
+                ;                          has started;
+                ;   max children reached - number of times, the process limit has been reached,
+                ;                          when pm tries to start more children (works only for
+                ;                          pm 'dynamic' and 'ondemand');
+                ; Value are updated in real time.
+                ; Example output:
+                ;   pool:                 www
+                ;   process manager:      static
+                ;   start time:           01/Jul/2011:17:53:49 +0200
+                ;   start since:          62636
+                ;   accepted conn:        190460
+                ;   listen queue:         0
+                ;   max listen queue:     1
+                ;   listen queue len:     42
+                ;   idle processes:       4
+                ;   active processes:     11
+                ;   total processes:      15
+                ;   max active processes: 12
+                ;   max children reached: 0
+                ;
+                ; By default the status page output is formatted as text/plain. Passing either
+                ; 'html', 'xml' or 'json' in the query string will return the corresponding
+                ; output syntax. Example:
+                ;   http://www.foo.bar/status
+                ;   http://www.foo.bar/status?json
+                ;   http://www.foo.bar/status?html
+                ;   http://www.foo.bar/status?xml
+                ;
+                ; By default the status page only outputs short status. Passing 'full' in the
+                ; query string will also return status for each pool process.
+                ; Example:
+                ;   http://www.foo.bar/status?full
+                ;   http://www.foo.bar/status?json&full
+                ;   http://www.foo.bar/status?html&full
+                ;   http://www.foo.bar/status?xml&full
+                ; The Full status returns for each process:
+                ;   pid                  - the PID of the process;
+                ;   state                - the state of the process (Idle, Running, ...);
+                ;   start time           - the date and time the process has started;
+                ;   start since          - the number of seconds since the process has started;
+                ;   requests             - the number of requests the process has served;
+                ;   request duration     - the duration in µs of the requests;
+                ;   request method       - the request method (GET, POST, ...);
+                ;   request URI          - the request URI with the query string;
+                ;   content length       - the content length of the request (only with POST);
+                ;   user                 - the user (PHP_AUTH_USER) (or '-' if not set);
+                ;   script               - the main script called (or '-' if not set);
+                ;   last request cpu     - the %cpu the last request consumed
+                ;                          it's always 0 if the process is not in Idle state
+                ;                          because CPU calculation is done when the request
+                ;                          processing has terminated;
+                ;   last request memory  - the max amount of memory the last request consumed
+                ;                          it's always 0 if the process is not in Idle state
+                ;                          because memory calculation is done when the request
+                ;                          processing has terminated;
+                ; If the process is in Idle state, then informations are related to the
+                ; last request the process has served. Otherwise informations are related to
+                ; the current request being served.
+                ; Example output:
+                ;   ************************
+                ;   pid:                  31330
+                ;   state:                Running
+                ;   start time:           01/Jul/2011:17:53:49 +0200
+                ;   start since:          63087
+                ;   requests:             12808
+                ;   request duration:     1250261
+                ;   request method:       GET
+                ;   request URI:          /test_mem.php?N=10000
+                ;   content length:       0
+                ;   user:                 -
+                ;   script:               /home/fat/web/docs/php/test_mem.php
+                ;   last request cpu:     0.00
+                ;   last request memory:  0
+                ;
+                ; Note: There is a real-time FPM status monitoring sample web page available
+                ;       It's available in: @EXPANDED_DATADIR@/fpm/status.html
+                ;
+                ; Note: The value must start with a leading slash (/). The value can be
+                ;       anything, but it may not be a good idea to use the .php extension or it
+                ;       may conflict with a real PHP file.
+                ; Default Value: not set
+                ;pm.status_path = /status
+
+                ; The ping URI to call the monitoring page of FPM. If this value is not set, no
+                ; URI will be recognized as a ping page. This could be used to test from outside
+                ; that FPM is alive and responding, or to
+                ; - create a graph of FPM availability (rrd or such);
+                ; - remove a server from a group if it is not responding (load balancing);
+                ; - trigger alerts for the operating team (24/7).
+                ; Note: The value must start with a leading slash (/). The value can be
+                ;       anything, but it may not be a good idea to use the .php extension or it
+                ;       may conflict with a real PHP file.
+                ; Default Value: not set
+                ;ping.path = /ping
+
+                ; This directive may be used to customize the response of a ping request. The
+                ; response is formatted as text/plain with a 200 response code.
+                ; Default Value: pong
+                ;ping.response = pong
+
+                ; The access log file
+                ; Default: not set
+                ;access.log = log/$pool.access.log
+
+                ; The access log format.
+                ; The following syntax is allowed
+                ;  %%: the '%' character
+                ;  %C: %CPU used by the request
+                ;      it can accept the following format:
+                ;      - %{user}C for user CPU only
+                ;      - %{system}C for system CPU only
+                ;      - %{total}C  for user + system CPU (default)
+                ;  %d: time taken to serve the request
+                ;      it can accept the following format:
+                ;      - %{seconds}d (default)
+                ;      - %{miliseconds}d
+                ;      - %{mili}d
+                ;      - %{microseconds}d
+                ;      - %{micro}d
+                ;  %e: an environment variable (same as $_ENV or $_SERVER)
+                ;      it must be associated with embraces to specify the name of the env
+                ;      variable. Some exemples:
+                ;      - server specifics like: %{REQUEST_METHOD}e or %{SERVER_PROTOCOL}e
+                ;      - HTTP headers like: %{HTTP_HOST}e or %{HTTP_USER_AGENT}e
+                ;  %f: script filename
+                ;  %l: content-length of the request (for POST request only)
+                ;  %m: request method
+                ;  %M: peak of memory allocated by PHP
+                ;      it can accept the following format:
+                ;      - %{bytes}M (default)
+                ;      - %{kilobytes}M
+                ;      - %{kilo}M
+                ;      - %{megabytes}M
+                ;      - %{mega}M
+                ;  %n: pool name
+                ;  %o: output header
+                ;      it must be associated with embraces to specify the name of the header:
+                ;      - %{Content-Type}o
+                ;      - %{X-Powered-By}o
+                ;      - %{Transfert-Encoding}o
+                ;      - ....
+                ;  %p: PID of the child that serviced the request
+                ;  %P: PID of the parent of the child that serviced the request
+                ;  %q: the query string
+                ;  %Q: the '?' character if query string exists
+                ;  %r: the request URI (without the query string, see %q and %Q)
+                ;  %R: remote IP address
+                ;  %s: status (response code)
+                ;  %t: server time the request was received
+                ;      it can accept a strftime(3) format:
+                ;      %d/%b/%Y:%H:%M:%S %z (default)
+                ;      The strftime(3) format must be encapsuled in a %{<strftime_format>}t tag
+                ;      e.g. for a ISO8601 formatted timestring, use: %{%Y-%m-%dT%H:%M:%S%z}t
+                ;  %T: time the log has been written (the request has finished)
+                ;      it can accept a strftime(3) format:
+                ;      %d/%b/%Y:%H:%M:%S %z (default)
+                ;      The strftime(3) format must be encapsuled in a %{<strftime_format>}t tag
+                ;      e.g. for a ISO8601 formatted timestring, use: %{%Y-%m-%dT%H:%M:%S%z}t
+                ;  %u: remote user
+                ;
+                ; Default: "%R - %u %t \"%m %r\" %s"
+                ;access.format = "%R - %u %t \"%m %r%Q%q\" %s %f %{mili}d %{kilo}M %C%%"
+
+                ; The log file for slow requests
+                ; Default Value: not set
+                ; Note: slowlog is mandatory if request_slowlog_timeout is set
+                slowlog = /var/log/php-fpm/www-slow.log
+
+                ; The timeout for serving a single request after which a PHP backtrace will be
+                ; dumped to the 'slowlog' file. A value of '0s' means 'off'.
+                ; Available units: s(econds)(default), m(inutes), h(ours), or d(ays)
+                ; Default Value: 0
+                ;request_slowlog_timeout = 0
+
+                ; The timeout for serving a single request after which the worker process will
+                ; be killed. This option should be used when the 'max_execution_time' ini option
+                ; does not stop script execution for some reason. A value of '0' means 'off'.
+                ; Available units: s(econds)(default), m(inutes), h(ours), or d(ays)
+                ; Default Value: 0
+                ;request_terminate_timeout = 0
+
+                ; Set open file descriptor rlimit.
+                ; Default Value: system defined value
+                ;rlimit_files = 1024
+
+                ; Set max core size rlimit.
+                ; Possible Values: 'unlimited' or an integer greater or equal to 0
+                ; Default Value: system defined value
+                ;rlimit_core = 0
+
+                ; Chroot to this directory at the start. This value must be defined as an
+                ; absolute path. When this value is not set, chroot is not used.
+                ; Note: you can prefix with '$prefix' to chroot to the pool prefix or one
+                ; of its subdirectories. If the pool prefix is not set, the global prefix
+                ; will be used instead.
+                ; Note: chrooting is a great security feature and should be used whenever
+                ;       possible. However, all PHP paths will be relative to the chroot
+                ;       (error_log, sessions.save_path, ...).
+                ; Default Value: not set
+                ;chroot =
+
+                ; Chdir to this directory at the start.
+                ; Note: relative path can be used.
+                ; Default Value: current directory or / when chroot
+                ;chdir = /var/www
+
+                ; Redirect worker stdout and stderr into main error log. If not set, stdout and
+                ; stderr will be redirected to /dev/null according to FastCGI specs.
+                ; Note: on highloaded environement, this can cause some delay in the page
+                ; process time (several ms).
+                ; Default Value: no
+                ;catch_workers_output = yes
+
+                ; Clear environment in FPM workers
+                ; Prevents arbitrary environment variables from reaching FPM worker processes
+                ; by clearing the environment in workers before env vars specified in this
+                ; pool configuration are added.
+                ; Setting to "no" will make all environment variables available to PHP code
+                ; via getenv(), $_ENV and $_SERVER.
+                ; Default Value: yes
+                ;clear_env = no
+
+                ; Limits the extensions of the main script FPM will allow to parse. This can
+                ; prevent configuration mistakes on the web server side. You should only limit
+                ; FPM to .php extensions to prevent malicious users to use other extensions to
+                ; exectute php code.
+                ; Note: set an empty value to allow all extensions.
+                ; Default Value: .php
+                ;security.limit_extensions = .php .php3 .php4 .php5 .php7
+
+                ; Pass environment variables like LD_LIBRARY_PATH. All $VARIABLEs are taken from
+                ; the current environment.
+                ; Default Value: clean env
+                ;env[HOSTNAME] = $HOSTNAME
+                ;env[PATH] = /usr/local/bin:/usr/bin:/bin
+                ;env[TMP] = /tmp
+                ;env[TMPDIR] = /tmp
+                ;env[TEMP] = /tmp
+
+                ; Additional php.ini defines, specific to this pool of workers. These settings
+                ; overwrite the values previously defined in the php.ini. The directives are the
+                ; same as the PHP SAPI:
+                ;   php_value/php_flag             - you can set classic ini defines which can
+                ;                                    be overwritten from PHP call 'ini_set'.
+                ;   php_admin_value/php_admin_flag - these directives won't be overwritten by
+                ;                                     PHP call 'ini_set'
+                ; For php_*flag, valid values are on, off, 1, 0, true, false, yes or no.
+
+                ; Defining 'extension' will load the corresponding shared extension from
+                ; extension_dir. Defining 'disable_functions' or 'disable_classes' will not
+                ; overwrite previously defined php.ini values, but will append the new value
+                ; instead.
+
+                ; Note: path INI options can be relative and will be expanded with the prefix
+                ; (pool, global or @prefix@)
+
+                ; Default Value: nothing is defined by default except the values in php.ini and
+                ;                specified at startup with the -d argument
+                ;php_admin_value[sendmail_path] = /usr/sbin/sendmail -t -i -f www@my.domain.com
+                ;php_flag[display_errors] = off
+                php_admin_value[error_log] = /var/log/php-fpm/www-error.log
+                php_admin_flag[log_errors] = on
+                ;php_admin_value[memory_limit] = 128M
+
+                ; Set the following data paths to directories owned by the FPM process user.
+                ;
+                ; Do not change the ownership of existing system directories, if the process
+                ; user does not have write permission, create dedicated directories for this
+                ; purpose.
+                ;
+                ; See warning about choosing the location of these directories on your system
+                ; at http://php.net/session.save-path
+                php_value[session.save_handler] = files
+                php_value[session.save_path]    = /var/lib/php/session
+                php_value[soap.wsdl_cache_dir]  = /var/lib/php/wsdlcache
+                ;php_value[opcache.file_cache]  = /var/lib/php/opcache
+              mode: '000644'
+              owner: root
+              group: root
+            /tmp/httpd.conf:
+              content: !Sub |
+                #
+                # This is the main Apache HTTP server configuration file.  It contains the
+                # configuration directives that give the server its instructions.
+                # See <URL:http://httpd.apache.org/docs/2.4/> for detailed information.
+                # In particular, see
+                # <URL:http://httpd.apache.org/docs/2.4/mod/directives.html>
+                # for a discussion of each configuration directive.
+                #
+                # Do NOT simply read the instructions in here without understanding
+                # what they do.  They're here only as hints or reminders.  If you are unsure
+                # consult the online docs. You have been warned.
+                #
+                # Configuration and logfile names: If the filenames you specify for many
+                # of the server's control files begin with "/" (or "drive:/" for Win32), the
+                # server will use that explicit path.  If the filenames do *not* begin
+                # with "/", the value of ServerRoot is prepended -- so 'log/access_log'
+                # with ServerRoot set to '/www' will be interpreted by the
+                # server as '/www/log/access_log', where as '/log/access_log' will be
+                # interpreted as '/log/access_log'.
+
+                #
+                # ServerRoot: The top of the directory tree under which the server's
+                # configuration, error, and log files are kept.
+                #
+                # Do not add a slash at the end of the directory path.  If you point
+                # ServerRoot at a non-local disk, be sure to specify a local disk on the
+                # Mutex directive, if file-based mutexes are used.  If you wish to share the
+                # same ServerRoot for multiple httpd daemons, you will need to change at
+                # least PidFile.
+                #
+                ServerRoot "/etc/httpd"
+
+                #
+                # Listen: Allows you to bind Apache to specific IP addresses and/or
+                # ports, instead of the default. See also the <VirtualHost>
+                # directive.
+                #
+                # Change this to Listen on specific IP addresses as shown below to
+                # prevent Apache from glomming onto all bound IP addresses.
+                #
+                #Listen 12.34.56.78:80
+                Listen 80
+
+                #
+                # Dynamic Shared Object (DSO) Support
+                #
+                # To be able to use the functionality of a module which was built as a DSO you
+                # have to place corresponding `LoadModule' lines at this location so the
+                # directives contained in it are actually available _before_ they are used.
+                # Statically compiled modules (those listed by `httpd -l') do not need
+                # to be loaded here.
+                #
+                # Example:
+                # LoadModule foo_module modules/mod_foo.so
+                #
+                Include conf.modules.d/*.conf
+
+                #
+                # If you wish httpd to run as a different user or group, you must run
+                # httpd as root initially and it will switch.
+                #
+                # User/Group: The name (or #number) of the user/group to run httpd as.
+                # It is usually good practice to create a dedicated user and group for
+                # running httpd, as with most system services.
+                #
+                User apache
+                Group apache
+
+                # 'Main' server configuration
+                #
+                # The directives in this section set up the values used by the 'main'
+                # server, which responds to any requests that aren't handled by a
+                # <VirtualHost> definition.  These values also provide defaults for
+                # any <VirtualHost> containers you may define later in the file.
+                #
+                # All of these directives may appear inside <VirtualHost> containers,
+                # in which case these default settings will be overridden for the
+                # virtual host being defined.
+                #
+
+                #
+                # ServerAdmin: Your address, where problems with the server should be
+                # e-mailed.  This address appears on some server-generated pages, such
+                # as error documents.  e.g. admin@your-domain.com
+                #
+                ServerAdmin root@localhost
+
+                #
+                # ServerName gives the name and port that the server uses to identify itself.
+                # This can often be determined automatically, but we recommend you specify
+                # it explicitly to prevent problems during startup.
+                #
+                # If your host doesn't have a registered DNS name, enter its IP address here.
+                #
+                #ServerName www.example.com:80
+
+                #
+                # Deny access to the entirety of your server's filesystem. You must
+                # explicitly permit access to web content directories in other
+                # <Directory> blocks below.
+                #
+                <Directory />
+                    AllowOverride none
+                    Require all denied
+                </Directory>
+
+                #
+                # Note that from this point forward you must specifically allow
+                # particular features to be enabled - so if something's not working as
+                # you might expect, make sure that you have specifically enabled it
+                # below.
+                #
+
+                #
+                # DocumentRoot: The directory out of which you will serve your
+                # documents. By default, all requests are taken from this directory, but
+                # symbolic links and aliases may be used to point to other locations.
+                #
+                DocumentRoot "/var/www/moodledata"
+
+                #
+                # Relax access to content within /var/www.
+                #
+                <Directory "/var/www">
+                    AllowOverride None
+                    # Allow open access:
+                    Require all granted
+                </Directory>
+
+                # Further relax access to the default document root:
+                <Directory "/var/www/moodledata">
+                    #
+                    # Possible values for the Options directive are "None", "All",
+                    # or any combination of:
+                    #   Indexes Includes FollowSymLinks SymLinksifOwnerMatch ExecCGI MultiViews
+                    #
+                    # Note that "MultiViews" must be named *explicitly* --- "Options All"
+                    # doesn't give it to you.
+                    #
+                    # The Options directive is both complicated and important.  Please see
+                    # http://httpd.apache.org/docs/2.4/mod/core.html#options
+                    # for more information.
+                    #
+                    Options Indexes FollowSymLinks
+
+                    #
+                    # AllowOverride controls what directives may be placed in .htaccess files.
+                    # It can be "All", "None", or any combination of the keywords:
+                    #   Options FileInfo AuthConfig Limit
+                    #
+                    AllowOverride None
+
+                    #
+                    # Controls who can get stuff from this server.
+                    #
+                    Require all granted
+                </Directory>
+
+                #
+                # DirectoryIndex: sets the file that Apache will serve if a directory
+                # is requested.
+                #
+                <IfModule dir_module>
+                    DirectoryIndex index.html
+                </IfModule>
+
+                #
+                # The following lines prevent .htaccess and .htpasswd files from being
+                # viewed by Web clients.
+                #
+                <Files ".ht*">
+                    Require all denied
+                </Files>
+
+                #
+                # ErrorLog: The location of the error log file.
+                # If you do not specify an ErrorLog directive within a <VirtualHost>
+                # container, error messages relating to that virtual host will be
+                # logged here.  If you *do* define an error logfile for a <VirtualHost>
+                # container, that host's errors will be logged there and not here.
+                #
+                ErrorLog "logs/error_log"
+
+                #
+                # LogLevel: Control the number of messages logged to the error_log.
+                # Possible values include: debug, info, notice, warn, error, crit,
+                # alert, emerg.
+                #
+                LogLevel warn
+
+                <IfModule log_config_module>
+                    #
+                    # The following directives define some format nicknames for use with
+                    # a CustomLog directive (see below).
+                    #
+                    LogFormat "%{X-Forwarded-For}i %h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
+                    LogFormat "%h %l %u %t \"%r\" %>s %b" common
+
+                    <IfModule logio_module>
+                      # You need to enable mod_logio.c to use %I and %O
+                      LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\" %I %O" combinedio
+                    </IfModule>
+
+                    #
+                    # The location and format of the access logfile (Common Logfile Format).
+                    # If you do not define any access logfiles within a <VirtualHost>
+                    # container, they will be logged here.  Contrariwise, if you *do*
+                    # define per-<VirtualHost> access logfiles, transactions will be
+                    # logged therein and *not* in this file.
+                    #
+                    #CustomLog "logs/access_log" common
+
+                    #
+                    # If you prefer a logfile with access, agent, and referer information
+                    # (Combined Logfile Format) you can use the following directive.
+                    #
+                    CustomLog "logs/access_log" combined
+                </IfModule>
+
+                <IfModule alias_module>
+                    #
+                    # Redirect: Allows you to tell clients about documents that used to
+                    # exist in your server's namespace, but do not anymore. The client
+                    # will make a new request for the document at its new location.
+                    # Example:
+                    # Redirect permanent /foo http://www.example.com/bar
+
+                    #
+                    # Alias: Maps web paths into filesystem paths and is used to
+                    # access content that does not live under the DocumentRoot.
+                    # Example:
+                    # Alias /webpath /full/filesystem/path
+                    #
+                    # If you include a trailing / on /webpath then the server will
+                    # require it to be present in the URL.  You will also likely
+                    # need to provide a <Directory> section to allow access to
+                    # the filesystem path.
+
+                    #
+                    # ScriptAlias: This controls which directories contain server scripts.
+                    # ScriptAliases are essentially the same as Aliases, except that
+                    # documents in the target directory are treated as applications and
+                    # run by the server when requested rather than as documents sent to the
+                    # client.  The same rules about trailing "/" apply to ScriptAlias
+                    # directives as to Alias.
+                    #
+                    ScriptAlias /cgi-bin/ "/var/www/cgi-bin/"
+
+                </IfModule>
+
+                #
+                # "/var/www/cgi-bin" should be changed to whatever your ScriptAliased
+                # CGI directory exists, if you have that configured.
+                #
+                <Directory "/var/www/cgi-bin">
+                    AllowOverride None
+                    Options None
+                    Require all granted
+                </Directory>
+
+                <IfModule mime_module>
+                    #
+                    # TypesConfig points to the file containing the list of mappings from
+                    # filename extension to MIME-type.
+                    #
+                    TypesConfig /etc/mime.types
+
+                    #
+                    # AddType allows you to add to or override the MIME configuration
+                    # file specified in TypesConfig for specific file types.
+                    #
+                    #AddType application/x-gzip .tgz
+                    #
+                    # AddEncoding allows you to have certain browsers uncompress
+                    # information on the fly. Note: Not all browsers support this.
+                    #
+                    #AddEncoding x-compress .Z
+                    #AddEncoding x-gzip .gz .tgz
+                    #
+                    # If the AddEncoding directives above are commented-out, then you
+                    # probably should define those extensions to indicate media types:
+                    #
+                    AddType application/x-compress .Z
+                    AddType application/x-gzip .gz .tgz
+
+                    #
+                    # AddHandler allows you to map certain file extensions to "handlers":
+                    # actions unrelated to filetype. These can be either built into the server
+                    # or added with the Action directive (see below)
+                    #
+                    # To use CGI scripts outside of ScriptAliased directories:
+                    # (You will also need to add "ExecCGI" to the "Options" directive.)
+                    #
+                    #AddHandler cgi-script .cgi
+
+                    # For type maps (negotiated resources):
+                    #AddHandler type-map var
+
+                    #
+                    # Filters allow you to process content before it is sent to the client.
+                    #
+                    # To parse .shtml files for server-side includes (SSI):
+                    # (You will also need to add "Includes" to the "Options" directive.)
+                    #
+                    AddType text/html .shtml
+                    AddOutputFilter INCLUDES .shtml
+                </IfModule>
+
+                #
+                # Specify a default charset for all content served; this enables
+                # interpretation of all content as UTF-8 by default.  To use the
+                # default browser choice (ISO-8859-1), or to allow the META tags
+                # in HTML content to override this choice, comment out this
+                # directive:
+                #
+                AddDefaultCharset UTF-8
+
+                <IfModule mime_magic_module>
+                    #
+                    # The mod_mime_magic module allows the server to use various hints from the
+                    # contents of the file itself to determine its type.  The MIMEMagicFile
+                    # directive tells the module where the hint definitions are located.
+                    #
+                    MIMEMagicFile conf/magic
+                </IfModule>
+
+                #
+                # Customizable error responses come in three flavors:
+                # 1) plain text 2) local redirects 3) external redirects
+                #
+                # Some examples:
+                #ErrorDocument 500 "The server made a boo boo."
+                #ErrorDocument 404 /missing.html
+                #ErrorDocument 404 "/cgi-bin/missing_handler.pl"
+                #ErrorDocument 402 http://www.example.com/subscription_info.html
+                #
+
+                #
+                # EnableMMAP and EnableSendfile: On systems that support it,
+                # memory-mapping or the sendfile syscall may be used to deliver
+                # files.  This usually improves server performance, but must
+                # be turned off when serving from networked-mounted
+                # filesystems or if support for these functions is otherwise
+                # broken on your system.
+                # Defaults if commented: EnableMMAP On, EnableSendfile Off
+                #
+                #EnableMMAP off
+                EnableSendfile on
+
+                # Enable HTTP/2 by default
+                #
+                # https://httpd.apache.org/docs/2.4/mod/core.html#protocols
+
+                <IfModule mod_http2.c>
+                    Protocols h2 h2c http/1.1
+                </IfModule>
+
+
+                # Supplemental configuration
+                #
+                # Load config files in the "/etc/httpd/conf.d" directory, if any.
+                IncludeOptional conf.d/*.conf
+        apply_webserver_tuning:
+          files:
+            /tmp/apply-tuning.sh:
+              content: !Sub |
+                #!/bin/bash -xe
+                mv /etc/httpd/conf/httpd.conf /etc/httpd/conf/httpd.conf.orig
+                cp /tmp/httpd.conf /etc/httpd/conf/
+                mv /etc/httpd/conf.modules.d/00-mpm.conf /etc/httpd/conf.modules.d/00-mpm.conf.orig
+                cp /tmp/00-mpm.conf /etc/httpd/conf.modules.d/
+                cp /tmp/mpm_event.conf /etc/httpd/conf.d/
+                mv /etc/php-fpm.d/www.conf /etc/php-fpm.d/www.conf.orig
+                cp /tmp/www.conf /etc/php-fpm.d/
+              mode: 000500
+              owner: root
+              group: root
+          commands:
+            apply_webserver_tuning:
+              command: ./apply-tuning.sh
+              cwd: /tmp
+              ignoreErrors: false   
+        install_logs:
+          packages:
+            yum:
+              awslogs: []
+          files:
+            /etc/awslogs/awslogs.conf:
+              content: !Sub |
+                [general]
+                state_file= /var/awslogs/state/agent-state
+                
+                [/var/log/cloud-init.log]
+                file = /var/log/cloud-init.log
+                log_group_name = ${Logs}
+                log_stream_name = {instance_id}/cloud-init.log
+                datetime_format = 
+                
+                [/var/log/cloud-init-output.log]
+                file = /var/log/cloud-init-output.log
+                log_group_name = ${Logs}
+                log_stream_name = {instance_id}/cloud-init-output.log
+                datetime_format = 
+                
+                [/var/log/cfn-init.log]
+                file = /var/log/cfn-init.log
+                log_group_name = ${Logs}
+                log_stream_name = {instance_id}/cfn-init.log
+                datetime_format = 
+                
+                [/var/log/cfn-hup.log]
+                file = /var/log/cfn-hup.log
+                log_group_name = ${Logs}
+                log_stream_name = {instance_id}/cfn-hup.log
+                datetime_format = 
+                
+                [/var/log/cfn-wire.log]
+                file = /var/log/cfn-wire.log
+                log_group_name = ${Logs}
+                log_stream_name = {instance_id}/cfn-wire.log
+                datetime_format = 
+                
+                [/var/log/httpd]
+                file = /var/log/httpd/*
+                log_group_name = ${Logs}
+                log_stream_name = {instance_id}/httpd
+                datetime_format = %d/%b/%Y:%H:%M:%S
+                
+              mode: '000444'
+              owner: root
+              group: root
+            /etc/awslogs/awscli.conf:
+              content: !Sub |
+                [plugins]
+                cwlogs = cwlogs
+                [default]
+                region = ${AWS::Region}
+              mode: '000444'
+              owner: root
+              group: root
+          commands:
+            01_create_state_directory:
+              command: mkdir -p /var/awslogs/state
+          services:
+            sysvinit:
+              awslogsd:
+                enabled: 'true'
+                ensureRunning: 'true'
+                files: /etc/awslogs/awslogs.conf
+              
+        install_aws_ini:
+          commands:
+            install_aws_ini:
+              command: ./download_aws_ini.sh
+              cwd: /tmp
+              ignoreErrors: true
+        config_moodle:
+          files:
+            /tmp/config.php:
+              content: !If
+                - DatabaseSelection
+                - !Sub |
+                  <?php
+                  require 'lib/aws.phar';
+                  use Aws\SecretsManager\SecretsManagerClient;
+                  use Aws\Exception\AwsException;
+                  use Aws\Iam\IamClient;
+
+                  $client = new SecretsManagerClient([
+                      'version' => '2017-10-17',
+                      'region' => '${AWS::Region}',
+                  ]);
+
+                  $secretName = '${MyRDSInstanceSecretArn}';
+
+                  try {
+                      $result = $client->getSecretValue([
+                          'SecretId' => $secretName,
+                      ]);
+
+                  } catch (AwsException $e) {
+                      $error = $e->getAwsErrorCode();
+                  }
+                  // Decrypts secret using the associated KMS CMK.
+                  // Depending on whether the secret is a string or binary, one of these fields will be populated.
+                  if (isset($result['SecretString'])) {
+                      $secret = $result['SecretString'];
+                  } 
+                  $CFG = new stdClass;
+                  $CFG->dbtype = 'pgsql';
+                  $CFG->dblibrary = 'native';
+                  $CFG->dbhost = '${DatabaseClusterEndpointAddress}';
+                  $CFG->dbname = '${DatabaseName}';
+                  $CFG->dbuser = json_decode($secret)->{'username'};
+                  $CFG->dbpass = json_decode($secret)->{'password'};
+                  $CFG->prefix = 'mdl_';
+                  $CFG->lang = '${MoodleLocale}';
+                  $CFG->dboptions = array(
+                    'dbpersist' => false,
+                    'dbsocket' => false,
+                    'dbport' => '',
+                    'dbhandlesoptions' => false,
+                    'dbcollation' => 'utf8mb4_0900_ai_ci',
+                  );
+                  // Hostname definition //
+                  $hostname = '${DomainName}';
+                  if ($hostname == '') {
+                    $hostwithprotocol = '${PublicAlbHostname}';
+                  }
+                  else {
+                    $hostwithprotocol = 'https://' . strtolower($hostname);
+                  }
+                  $CFG->wwwroot = strtolower($hostwithprotocol);
+                  $CFG->sslproxy = (substr($hostwithprotocol,0,5)=='https' ? true : false);
+                  // Moodledata location //
+                  $CFG->dataroot = '/var/www/moodledata/share_data';
+                  $CFG->tempdir = '/var/www/moodledata/share_temp';
+                  $CFG->cachedir = '/var/www/moodledata/share_cache';
+                  $CFG->localcachedir = '/localcache';
+                  $CFG->directorypermissions = 02777;
+                  $CFG->admin = 'admin';
+                  if (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+                      $ipAddresses = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+                      $_SERVER['REMOTE_ADDR'] = trim($ipAddresses[0]);
+                  }
+                  // Configure Session Cache
+                  $SessionEndpoint = '${ElastiCacheClusterEndpointAddress}';
+                  if ($SessionEndpoint != '') {
+                    $CFG->session_redis_host = $SessionEndpoint;
+                    $CFG->session_handler_class = '\core\session\redis';
+                    $CFG->session_redis_port = 6379;                     // Optional.
+                    $CFG->session_redis_database = 0;                    // Optional, default is db 0.
+                    //$CFG->session_redis_auth = '';                       // Optional, default is don't set one.
+                    //$CFG->session_redis_prefix = '';                     // Optional, default is don't set one.
+                    $CFG->session_redis_acquire_lock_timeout = 120;      // Default is 2 minutes.
+                    $CFG->session_redis_acquire_lock_warn = 0;           // If set logs early warning if a lock has not been acquried.
+                    $CFG->session_redis_lock_expire = 7200;              // Optional, defaults to session timeout.
+                    $CFG->session_redis_lock_retry = 100;                // Optional wait between lock attempts in ms, default is 100.
+                    $CFG->session_redis_serializer_use_igbinary = false; // Optional, default is PHP builtin serializer.
+                    $CFG->session_redis_compressor = 'none';       
+                    }
+                  //@error_reporting(E_ALL | E_STRICT);   // NOT FOR PRODUCTION SERVERS!
+                  //@ini_set('display_errors', '1');         // NOT FOR PRODUCTION SERVERS!
+                  //$CFG->debug = (E_ALL | E_STRICT);   // === DEBUG_DEVELOPER - NOT FOR PRODUCTION SERVERS!
+                  //$CFG->debugdisplay = 1; 
+                  require_once(__DIR__ . '/lib/setup.php');
+                  // END OF CONFIG //
+                  ?>
+                - !Sub |
+                  <?php
+                  require 'lib/aws.phar';
+                  use Aws\SecretsManager\SecretsManagerClient;
+                  use Aws\Exception\AwsException;
+                  use Aws\Iam\IamClient;
+
+                  $client = new SecretsManagerClient([
+                      'version' => '2017-10-17',
+                      'region' => '${AWS::Region}',
+                  ]);
+
+                  $secretName = '${MyRDSInstanceSecretArn}';
+
+                  try {
+                      $result = $client->getSecretValue([
+                          'SecretId' => $secretName,
+                      ]);
+
+                  } catch (AwsException $e) {
+                      $error = $e->getAwsErrorCode();
+                  }
+                  // Decrypts secret using the associated KMS CMK.
+                  // Depending on whether the secret is a string or binary, one of these fields will be populated.
+                  if (isset($result['SecretString'])) {
+                      $secret = $result['SecretString'];
+                  } 
+                  $CFG = new stdClass;
+                  $CFG->dbtype = 'mysqli';
+                  $CFG->dblibrary = 'native';
+                  $CFG->dbhost = '${DatabaseClusterEndpointAddress}';
+                  $CFG->dbname = '${DatabaseName}';
+                  $CFG->dbuser = json_decode($secret)->{'username'};
+                  $CFG->dbpass = json_decode($secret)->{'password'};
+                  $CFG->prefix = 'mdl_';
+                  $CFG->lang = '${MoodleLocale}';
+                  $CFG->dboptions = array(
+                    'dbpersist' => false,
+                    'dbsocket' => false,
+                    'dbport' => '',
+                    'dbhandlesoptions' => false,
+                    'dbcollation' => 'utf8mb4_0900_ai_ci',
+                  );
+                  // Hostname definition //
+                  $hostname = '${DomainName}';
+                  if ($hostname == '') {
+                    $hostwithprotocol = '${PublicAlbHostname}';
+                  }
+                  else {
+                    $hostwithprotocol = 'https://' . strtolower($hostname);
+                  }
+                  $CFG->wwwroot = strtolower($hostwithprotocol);
+                  $CFG->sslproxy = (substr($hostwithprotocol,0,5)=='https' ? true : false);
+                  // Moodledata location //
+                  $CFG->dataroot = '/var/www/moodledata/share_data';
+                  $CFG->tempdir = '/var/www/moodledata/share_temp';
+                  $CFG->cachedir = '/var/www/moodledata/share_cache';
+                  $CFG->localcachedir = '/localcache';
+                  $CFG->directorypermissions = 02777;
+                  $CFG->admin = 'admin';
+                  if (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+                      $ipAddresses = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+                      $_SERVER['REMOTE_ADDR'] = trim($ipAddresses[0]);
+                  }
+                  // Configure Session Cache
+                  $SessionEndpoint = '${ElastiCacheClusterEndpointAddress}';
+                  if ($SessionEndpoint != '') {
+                    $CFG->session_redis_host = $SessionEndpoint;
+                    $CFG->session_handler_class = '\core\session\redis';
+                    $CFG->session_redis_port = 6379;                     // Optional.
+                    $CFG->session_redis_database = 0;                    // Optional, default is db 0.
+                    //$CFG->session_redis_auth = '';                       // Optional, default is don't set one.
+                    //$CFG->session_redis_prefix = '';                     // Optional, default is don't set one.
+                    $CFG->session_redis_acquire_lock_timeout = 120;      // Default is 2 minutes.
+                    $CFG->session_redis_acquire_lock_warn = 0;           // If set logs early warning if a lock has not been acquried.
+                    $CFG->session_redis_lock_expire = 7200;              // Optional, defaults to session timeout.
+                    $CFG->session_redis_lock_retry = 100;                // Optional wait between lock attempts in ms, default is 100.
+                    $CFG->session_redis_serializer_use_igbinary = false; // Optional, default is PHP builtin serializer.
+                    $CFG->session_redis_compressor = 'none';       
+                  }
+                  //@error_reporting(E_ALL | E_STRICT);   // NOT FOR PRODUCTION SERVERS!
+                  //@ini_set('display_errors', '1');         // NOT FOR PRODUCTION SERVERS!
+                  //$CFG->debug = (E_ALL | E_STRICT);   // === DEBUG_DEVELOPER - NOT FOR PRODUCTION SERVERS!
+                  //$CFG->debugdisplay = 1; 
+                  require_once(__DIR__ . '/lib/setup.php');
+                  // END OF CONFIG //
+                  ?>
+              mode: '000755'
+              owner: root
+              group: root
+            
+            /tmp/deploy_moodle_config.sh:
+              content:  !Sub |
+                #!/bin/bash -xe
+                cp /tmp/config.php /var/www/moodledata/config.php
+                chown -R apache:apache /var/www/moodledata
+                chown -R apache:apache /localcache
+                echo "* * * * * /usr/bin/php /var/www/moodledata/admin/cli/cron.php > /dev/null" > /etc/cron.d/moodle_cron.txt
+                crontab -u apache /etc/cron.d/moodle_cron.txt
+              mode: 000500
+              owner: root
+              group: root
+          commands:
+            config_moodle:
+              command: ./deploy_moodle_config.sh
+              cwd: /tmp
+              ignoreErrors: false
+        install_cacheclient:
+          packages:
+            yum:
+              gcc-c++: []  
+          files:
+            /tmp/install_cacheclient.sh:
+              content:
+                !Sub |
+                  #!/bin/bash -xe
+                  
+                  #Install memcached and then remove it. Memcached is not actually needed. We install amazon-elasticache-cluster-client.so instead. However Moodle does not detect memcached is installed. Therefore, this tricks Moodle into thinking it is installed.
+                  sudo yum install -y php-redis
+                  
+                  
+                  wget -P /tmp/ https://elasticache-downloads.s3.amazonaws.com/ClusterClient/PHP-7.3/latest-64bit
+                  tar -xf '/tmp/latest-64bit' 
+                  cp '/tmp/amazon-elasticache-cluster-client.so' /usr/lib64/php/modules/
+                  if [ ! -f /etc/php.d/20-redis.ini ]; then
+                      touch /etc/php.d/20-redis.ini
+                  fi
+
+                  echo 'extension=/usr/lib64/php/modules/amazon-elasticache-cluster-client.so;' >> /etc/php.d/20-redis.ini
+                  echo 'extension=igbinary.so;' >> /etc/php.d/20-redis.ini
+                  
+                  
+                  #update Moodle source to use DYNAMIC_CLIENT_MODE so Moodle can detect changes to the elasticache cluster membership
+                  #sed -i '/\$this->options\[Memcached::OPT_BUFFER_WRITES\] = \$bufferwrites;/a \ \ \ \ \ \ \ \ $this->options[Memcached::OPT_CLIENT_MODE] = Memcached::DYNAMIC_CLIENT_MODE;' /var/www/moodledata/cache/stores/memcached/lib.php
+                  
+              mode: 000500
+              owner: root
+              group: root
+          commands:
+            install_cacheclient:
+              command: ./install_cacheclient.sh
+              cwd: /tmp
+              ignoreErrors: false
+        install_opcache:
+          packages:
+            yum:
+              php-opcache: []
+          files:
+            /tmp/install_opcache.sh:
+              content:
+                !Sub |
+                  #!/bin/bash -xe
+                  # create hidden opcache directory locally & change owner to apache
+                  if [ ! -d /var/www/.opcache ]; then                    
+                      mkdir -p /var/www/.opcache
+                  fi
+                  #Ensure opcache is enabled and add settings recomended by moodle at https://docs.moodle.org/34/en/OPcache
+                  sed -i 's/;opcache.file_cache=.*/opcache.file_cache=\/var\/www\/.opcache/' /etc/php.d/10-opcache.ini
+                  sed -i 's/opcache.memory_consumption=.*/opcache.memory_consumption=512/' /etc/php.d/10-opcache.ini
+                  sed -i 's/opcache.max_accelerated_files=.*/opcache.max_accelerated_files=8000/' /etc/php.d/10-opcache.ini
+                  sed -i 's/;opcache.revalidate_freq=.*/opcache.revalidate_freq=300/' /etc/php.d/10-opcache.ini
+                  sed -i 's/;opcache.use_cwd=.*/opcache.use_cwd=1/' /etc/php.d/10-opcache.ini
+                  sed -i 's/;opcache.validate_timestamps=.*/opcache.validate_timestamps=1/' /etc/php.d/10-opcache.ini
+                  sed -i 's/;opcache.save_comments=.*/opcache.save_comments=1/' /etc/php.d/10-opcache.ini
+                  sed -i 's/;opcache.enable_file_override=.*/opcache.enable_file_override=60/' /etc/php.d/10-opcache.ini
+              mode: 000500
+              owner: root
+              group: root
+          commands:
+            install_opcache:
+              command: ./install_opcache.sh
+              cwd: /tmp
+              ignoreErrors: false
+        start_webserver:
+          services:
+            sysvinit:
+              httpd:
+                enabled: true
+                ensureRunning: true
+    Properties:
+      IamInstanceProfile: !Ref WebInstanceProfile
+      ImageId: !Ref LatestAmiId
+      InstanceMonitoring: true
+      InstanceType: !Ref WebInstanceType
+      KeyName: !Ref EC2KeyName
+      SecurityGroups:
+      - !Ref WebSecurityGroup
+      UserData:
+        "Fn::Base64":
+          !Sub |
+            #!/bin/bash -xe
+            yum update -y
+
+            # add new config date time 07/09/2023
+            timedatectl
+            timedatectl set-timezone Asia/Bangkok
+            
+            #Create directory structure
+            mkdir -p /var/www/moodledata
+            #localcachedir
+            mkdir /localcache
+
+            #Mount NAS
+            mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 ${NasPrivateIp}:/moodledata /var/www/moodledata
+            
+            #Mount NFS persistent
+            echo '${NasPrivateIp}:/moodledata /var/www/moodledata  nfs nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2  0 0' >> /etc/fstab
+
+            #Run CloudFormation Init Script to install CloudWatch Agent
+            yum install -y amazon-cloudwatch-agent
+            /opt/aws/bin/cfn-init --configsets default --verbose --stack ${AWS::StackName} --resource WebLaunchConfiguration --region ${AWS::Region}
+
+            #Run CloudFormation Init Scripts
+            /opt/aws/bin/cfn-init --configsets deploy_webserver --verbose --stack ${AWS::StackName} --resource WebLaunchConfiguration --region ${AWS::Region}
+            /opt/aws/bin/cfn-signal --exit-code $? --stack ${AWS::StackName} --resource WebAutoScalingGroup --region ${AWS::Region}
+            
+            
+Outputs:
+  Opcachestatus:
+    Value: !Join [ '', [ !Ref PublicAlbHostname, '/opcache-instanceid.php' ] ]

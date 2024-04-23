@@ -1,0 +1,303 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Reference Architecture to host Moodle on AWS - Creates Moodle NAS
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: NAS Parameters
+      Parameters:
+        - EC2KeyName
+        - NasInstanceType
+        - NasSecurityGroup
+        - NasInstanceAdditionalDiskType
+        - NasInstanceAdditionalDiskSize
+        - Subnet
+    ParameterLabels:
+      EC2KeyName:
+        default: Existing Key Pair
+      Subnet:
+        default: Subnet
+      NasInstanceType:
+        default: NAS Tier Instance Type
+      NasInstanceAdditionalDiskType:
+        default: NAS Tier Instance Additional Disk Type
+      NasInstanceAdditionalDiskSize:
+        default: NAS Tier Instance Additional Disk Size
+
+Parameters:
+  EC2KeyName:
+    AllowedPattern: ^([a-zA-Z0-9 @.`~!#$%^&*()_+,\\-])*$
+    ConstraintDescription: Must be letters (upper or lower), numbers, and special characters.
+    Description: Name of an EC2 KeyPair. Your bastion & Web instances will launch with this KeyPair.
+    Type: AWS::EC2::KeyPair::KeyName
+  Subnet:
+    Description: Select existing subnets. The number selected must match the number of subnets above. Subnets selected must be in separate AZs.
+    Type: String
+  NasSecurityGroup:
+    Description: Select the web security group.
+    Type: AWS::EC2::SecurityGroup::Id
+  NasInstanceType:
+    AllowedValues:
+      - a1.medium
+      - a1.large
+      - a1.xlarge
+      - a1.2xlarge
+      - a1.4xlarge	
+    ConstraintDescription: Must be a valid Amazon EC2 instance type.
+    Default: a1.large
+    Description: The Amazon EC2 ARM instance type for your nas instance.
+    Type: String
+  NasInstanceAdditionalDiskType:
+    AllowedValues:
+      - gp3
+    ConstraintDescription: Must be a valid Amazon EC2 EBS type.
+    Default: gp3
+    Description: The Amazon EC2 EBS type for your nas instance.
+    Type: String
+  NasInstanceAdditionalDiskSize:
+    ConstraintDescription: Must be a valid Amazon EC2 EBS Size.
+    Default: 50
+    Description: The Amazon EC2 EBS size for your nas instance.
+    Type: String
+  LatestAmiId :
+    Type : AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-arm64-gp2
+
+Resources:
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+      - !Ref EC2InstanceRole
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: /
+      ManagedPolicyArns: 
+      - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+  EC2Instance: 
+    Type: AWS::EC2::Instance
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          setup_moodle:
+            - deploy_moodle
+          default:
+            - 01_setupCfnHup
+            - 02_config-amazon-cloudwatch-agent
+            - 03_restart_amazon-cloudwatch-agent
+          UpdateEnvironment:
+            - 02_config-amazon-cloudwatch-agent
+            - 03_restart_amazon-cloudwatch-agent
+        deploy_moodle:
+          files:            
+            /tmp/deploy_moodle.sh:
+              content:  !Sub |
+                #!/bin/bash -xe
+                wget -O /tmp/moodle.tgz https://stou-moodle-web-download.s3.ap-southeast-1.amazonaws.com/moodle-3.11.13.tgz
+                tar -xvzf /tmp/moodle.tgz --strip-components=1 -C /moodledata/
+                wget -O /moodledata/lib/aws.phar https://docs.aws.amazon.com/aws-sdk-php/v3/download/aws.phar
+                #dataroot
+                mkdir /moodledata/share_data
+                #tempdir
+                mkdir /moodledata/share_temp
+                #cachedir
+                mkdir /moodledata/share_cache
+              mode: 000500
+              owner: root
+              group: root
+          commands:
+            deploy_moodle:
+              command: ./deploy_moodle.sh
+              cwd: /tmp
+              ignoreErrors: false          
+        # Definition of json configuration of AmazonCloudWatchAgent, you can change the configuration below.
+        02_config-amazon-cloudwatch-agent:
+          files:
+            '/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json':
+              content: !Sub |
+                {
+                  "metrics": {
+                    "append_dimensions": {
+                      "AutoScalingGroupName": "${!aws:AutoScalingGroupName}",
+                      "ImageId": "${!aws:ImageId}",
+                      "InstanceId": "${!aws:InstanceId}",
+                      "InstanceType": "${!aws:InstanceType}"
+                    },
+                    "metrics_collected": {
+                      "cpu": {
+                        "measurement": [
+                          "cpu_usage_idle",
+                          "cpu_usage_iowait",
+                          "cpu_usage_user",
+                          "cpu_usage_system"
+                        ],
+                        "metrics_collection_interval": 60,
+                        "resources": [
+                          "*"
+                        ],
+                        "totalcpu": false
+                      },
+                      "disk": {
+                        "measurement": [
+                          "used_percent",
+                          "inodes_free",
+                          "used",
+                          "total"
+                        ],
+                        "metrics_collection_interval": 60,
+                        "resources": [
+                          "*"
+                        ]
+                      },
+                      "diskio": {
+                        "measurement": [
+                          "io_time",
+                          "write_bytes",
+                          "read_bytes",
+                          "writes",
+                          "reads"
+                        ],
+                        "metrics_collection_interval": 60,
+                        "resources": [
+                          "*"
+                        ]
+                      },
+                      "mem": {
+                        "measurement": [
+                          "mem_used_percent"
+                        ],
+                        "metrics_collection_interval": 60
+                      },
+                      "netstat": {
+                        "measurement": [
+                          "tcp_established",
+                          "tcp_time_wait"
+                        ],
+                        "metrics_collection_interval": 60
+                      },
+                      "swap": {
+                        "measurement": [
+                          "swap_used_percent"
+                        ],
+                        "metrics_collection_interval": 60
+                      }
+                    }
+                  }
+                }
+        # Invoke amazon-cloudwatch-agent-ctl to restart the AmazonCloudWatchAgent.
+        03_restart_amazon-cloudwatch-agent:
+          commands:
+            01_stop_service:
+              command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a stop
+            02_start_service:
+              command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+        # Cfn-hup setting, it is to monitor the change of metadata.
+        # When there is change in the contents of json file in the metadata section, cfn-hup will call cfn-init to restart the AmazonCloudWatchAgent.
+        01_setupCfnHup:
+          files:
+             '/etc/cfn/cfn-hup.conf':
+               content: !Sub |
+                 [main]
+                 stack=${AWS::StackId}
+                 region=${AWS::Region}
+                 interval=1
+               mode: '000400'
+               owner: root
+               group: root
+             '/etc/cfn/hooks.d/amazon-cloudwatch-agent-auto-reloader.conf':
+               content: !Sub |
+                 [cfn-auto-reloader-hook]
+                 triggers=post.update
+                 path=Resources.EC2Instance.Metadata.AWS::CloudFormation::Init.02_config-amazon-cloudwatch-agent
+                 action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource EC2Instance --region ${AWS::Region} --configsets UpdateEnvironment
+                 runas=root
+               mode: '000400'
+               owner: root
+               group: root
+             "/lib/systemd/system/cfn-hup.service":
+                content: !Sub |
+                  [Unit]
+                  Description=cfn-hup daemon
+                  [Service]
+                  Type=simple
+                  ExecStart=/opt/aws/bin/cfn-hup
+                  Restart=always
+                  [Install]
+                  WantedBy=multi-user.target
+          commands:
+            01enable_cfn_hup:
+              command: !Sub |
+                systemctl enable cfn-hup.service
+            02start_cfn_hup:
+              command: !Sub |
+                systemctl start cfn-hup.service
+    Properties:
+      SubnetId: !Ref Subnet
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref NasInstanceType
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      KeyName: !Ref EC2KeyName
+      SecurityGroupIds:
+        - !Ref NasSecurityGroup
+      BlockDeviceMappings: 
+        - DeviceName: "/dev/sdb"
+          Ebs: 
+            VolumeType: !Ref NasInstanceAdditionalDiskType
+            DeleteOnTermination: true
+            #add config encryption disk nas 07/-9/2023
+            Encrypted: true
+            VolumeSize: !Ref NasInstanceAdditionalDiskSize
+      Monitoring: true
+      Tags:
+        - Key: Name
+          Value: !Join [ '', [ 'NAS / ', !Ref 'AWS::StackName' ] ]
+      UserData:
+        "Fn::Base64":
+          !Sub |
+            #!/bin/bash
+            yum update -y
+            # add new config date time 07/09/2023
+
+            timedatectl
+            timedatectl set-timezone Asia/Bangkok
+            
+            #Create directory structure
+            mkdir -p /moodledata
+            
+            #Formate disk
+            mkfs.ext4 /dev/sdb
+
+            #Mount disk
+            mount /dev/sdb /moodledata
+
+            #Create auto mount
+            echo '/dev/sdb  /moodledata ext4  defaults  0 0' >> /etc/fstab
+
+            #Export paths
+            echo '/moodledata        *(rw,sync,no_root_squash)' >> /etc/exports
+
+            #Start NFS Server
+            systemctl start nfs-server
+            systemctl enable nfs-server
+
+            yum install -y amazon-cloudwatch-agent
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource EC2Instance --region ${AWS::Region} --configsets setup_moodle
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource EC2Instance --region ${AWS::Region} --configsets default
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource EC2Instance --region ${AWS::Region}
+
+Outputs:
+  NasPrivateIp:
+    Value: !GetAtt EC2Instance.PrivateIp
+  
+      
