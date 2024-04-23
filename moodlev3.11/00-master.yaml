@@ -225,23 +225,22 @@ Parameters:
     Type: String
   DatabaseInstanceType:
     AllowedValues:
-      #- db.m5.large
-      #- db.m5.xlarge
-      #- db.m5.2xlarge
-      #- db.m5.4xlarge
-      #- db.m5.8xlarge
-      #- db.m5.12xlarge
-      #- db.m5.16xlarge
-      #- db.m5.24xlarge
-      - db.t3.medium
-      - db.r5.large
-      - db.r5.xlarge
-      - db.r5.2xlarge
-      - db.r5.4xlarge
-      - db.r5.8xlarge
-      - db.r5.12xlarge
-      - db.r5.16xlarge
-      - db.r5.24xlarge
+      - db.m6i.large
+      - db.m6i.xlarge
+      - db.m6i.2xlarge
+      - db.m6i.4xlarge
+      - db.m6i.8xlarge
+      - db.m6i.12xlarge
+      - db.m6i.16xlarge
+      - db.m6i.24xlarge
+      - db.r6i.large
+      - db.r6i.xlarge
+      - db.r6i.2xlarge
+      - db.r6i.4xlarge
+      - db.r6i.8xlarge
+      - db.r6i.12xlarge
+      - db.r6i.16xlarge
+      - db.r6i.24xlarge
     ConstraintDescription: Must be a valid RDS instance class.
     Default: db.r5.large
     Description: The Amazon RDS database instance class.
@@ -340,14 +339,14 @@ Parameters:
       - t3.large
       - t3.xlarge
       - t3.2xlarge
-      - m5.large
-      - m5.xlarge
-      - m5.2xlarge
-      - m5.4xlarge
-      - m5.12xlarge
-      - m5.24xlarge
-      - m6a.xlarge
-      - m6a.2xlarge
+      - m6i.large
+      - m6i.xlarge
+      - m6i.2xlarge
+      - m6i.4xlarge
+      - m6i.12xlarge
+      - m6i.24xlarge
+      - m6i.xlarge
+      - m6i.2xlarge
     ConstraintDescription: Must be a valid Amazon EC2 instance type.
     Default: m5.xlarge
     Description: The Amazon EC2 instance type for your web instances.
