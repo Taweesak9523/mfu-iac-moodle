@@ -237,9 +237,7 @@ Resources:
       Cooldown: 60
       HealthCheckGracePeriod: 360
       HealthCheckType: ELB
-      LaunchTemplate:
-           LaunchTemplateId: !Ref WebLaunchTemplate
-           Version: !GetAtt WebLaunchTemplate.LatestVersionNumber
+      LaunchConfigurationName: !Ref WebLaunchConfiguration
       MaxSize: !Ref WebAsgMax
       MinSize: !Ref WebAsgMin
       Tags:
@@ -303,8 +301,8 @@ Resources:
       ComparisonOperator: LessThanThreshold
       MetricName: CPUUtilization   
      
-  LaunchTemplate:
-    Type: AWS::EC2::LaunchTemplate
+  WebLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
     Metadata:
       AWS::CloudFormation::Init:
         configSets:
@@ -420,8 +418,8 @@ Resources:
                content: !Sub |
                  [cfn-auto-reloader-hook]
                  triggers=post.update
-                 path=Resources.WebLaunchTemplate.Metadata.AWS::CloudFormation::Init.02_config-amazon-cloudwatch-agent
-                 action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource WebLaunchTemplate --region ${AWS::Region} --configsets UpdateEnvironment
+                 path=Resources.WebLaunchConfiguration.Metadata.AWS::CloudFormation::Init.02_config-amazon-cloudwatch-agent
+                 action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource WebLaunchConfiguration --region ${AWS::Region} --configsets UpdateEnvironment
                  runas=root
                mode: '000400'
                owner: root
@@ -1664,20 +1662,22 @@ Resources:
                   #!/bin/bash -xe
                   
                   #Install memcached and then remove it. Memcached is not actually needed. We install amazon-elasticache-cluster-client.so instead. However Moodle does not detect memcached is installed. Therefore, this tricks Moodle into thinking it is installed.
-                  sudo yum install -y php-pecl-memcached php-redis
-                  sudo yum remove -y php-pecl-memcached
-
-                  Install elasticache-cluster-client.so
+                  sudo yum install -y php-redis
+                  
+                  
                   wget -P /tmp/ https://elasticache-downloads.s3.amazonaws.com/ClusterClient/PHP-7.3/latest-64bit
-                  tar -xf '/tmp/latest-64bit'
+                  tar -xf '/tmp/latest-64bit' 
                   cp '/tmp/amazon-elasticache-cluster-client.so' /usr/lib64/php/modules/
-                  if [ ! -f /etc/php.d/50-memcached.ini ]; then
-                      touch /etc/php.d/50-memcached.ini
+                  if [ ! -f /etc/php.d/20-redis.ini ]; then
+                      touch /etc/php.d/20-redis.ini
                   fi
-                  echo 'extension=/usr/lib64/php/modules/amazon-elasticache-cluster-client.so;' >> /etc/php.d/50-memcached.ini
-                  echo 'extension=igbinary.so;' >> /etc/php.d/50-memcached.ini
+
+                  echo 'extension=/usr/lib64/php/modules/amazon-elasticache-cluster-client.so;' >> /etc/php.d/20-redis.ini
+                  echo 'extension=igbinary.so;' >> /etc/php.d/20-redis.ini
+                  
+                  
                   #update Moodle source to use DYNAMIC_CLIENT_MODE so Moodle can detect changes to the elasticache cluster membership
-                  sed -i '/\$this->options\[Memcached::OPT_BUFFER_WRITES\] = \$bufferwrites;/a \ \ \ \ \ \ \ \ $this->options[Memcached::OPT_CLIENT_MODE] = Memcached::DYNAMIC_CLIENT_MODE;' /var/www/moodledata/cache/stores/memcached/lib.php
+                  #sed -i '/\$this->options\[Memcached::OPT_BUFFER_WRITES\] = \$bufferwrites;/a \ \ \ \ \ \ \ \ $this->options[Memcached::OPT_CLIENT_MODE] = Memcached::DYNAMIC_CLIENT_MODE;' /var/www/moodledata/cache/stores/memcached/lib.php
                   
               mode: 000500
               owner: root
@@ -1724,21 +1724,12 @@ Resources:
                 enabled: true
                 ensureRunning: true
     Properties:
-    LaunchTemplateData:
-      BlockDeviceMappings:
-      - DeviceName: /dev/xvda
-        Ebs:
-          DeleteOnTermination: true
-          VolumeSize: 10 
-          VolumeType: gp3
-      IamInstanceProfile: 
-        Arn:  !GetAtt WebInstanceProfile
+      IamInstanceProfile: !Ref WebInstanceProfile
       ImageId: !Ref LatestAmiId
+      InstanceMonitoring: true
       InstanceType: !Ref WebInstanceType
-      Monitoring:
-        Enabled: true
       KeyName: !Ref EC2KeyName
-      SecurityGroupsIds:
+      SecurityGroups:
       - !Ref WebSecurityGroup
       UserData:
         "Fn::Base64":
@@ -1763,12 +1754,13 @@ Resources:
 
             #Run CloudFormation Init Script to install CloudWatch Agent
             yum install -y amazon-cloudwatch-agent
-            /opt/aws/bin/cfn-init --configsets default --verbose --stack ${AWS::StackName} --resource WebLaunchTemplate --region ${AWS::Region}
+            /opt/aws/bin/cfn-init --configsets default --verbose --stack ${AWS::StackName} --resource WebLaunchConfiguration --region ${AWS::Region}
 
             #Run CloudFormation Init Scripts
-            /opt/aws/bin/cfn-init --configsets deploy_webserver --verbose --stack ${AWS::StackName} --resource WebLaunchTemplate --region ${AWS::Region}
+            /opt/aws/bin/cfn-init --configsets deploy_webserver --verbose --stack ${AWS::StackName} --resource WebLaunchConfiguration --region ${AWS::Region}
             /opt/aws/bin/cfn-signal --exit-code $? --stack ${AWS::StackName} --resource WebAutoScalingGroup --region ${AWS::Region}
-                       
+            
+            
 Outputs:
   Opcachestatus:
     Value: !Join [ '', [ !Ref PublicAlbHostname, '/opcache-instanceid.php' ] ]
