@@ -1714,50 +1714,50 @@ Resources:
                 enabled: true
                 ensureRunning: true
     Properties:
-    LaunchTemplateData:
-      BlockDeviceMappings:
-      - DeviceName: /dev/xvda
-        Ebs:
-          DeleteOnTermination: true
-          VolumeSize: 10 
-          VolumeType: gp3
-      IamInstanceProfile: 
-        Arn:  !GetAtt WebInstanceProfile
-      ImageId: !Ref LatestAmiId
-      InstanceType: !Ref WebInstanceType
-      Monitoring:
-        Enabled: true
-      KeyName: !Ref EC2KeyName
-      SecurityGroupsIds:
-      - !Ref WebSecurityGroup
-      UserData:
-        "Fn::Base64":
-          !Sub |
-            #!/bin/bash -xe
-            yum update -y
+      LaunchTemplateData:
+        BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 10 
+            VolumeType: gp3
+        IamInstanceProfile: 
+          Arn:  !GetAtt WebInstanceProfile.Arn
+        ImageId: !Ref LatestAmiId
+        InstanceType: !Ref WebInstanceType
+        Monitoring:
+          Enabled: true
+        KeyName: !Ref EC2KeyName
+        SecurityGroupsIds:
+        - !Ref WebSecurityGroup
+        UserData:
+          "Fn::Base64":
+            !Sub |
+              #!/bin/bash -xe
+              yum update -y
 
-            # add new config date time 07/09/2023
-            timedatectl
-            timedatectl set-timezone Asia/Bangkok
-            
-            #Create directory structure
-            mkdir -p /var/www/moodledata
-            #localcachedir
-            mkdir /localcache
+              # add new config date time 07/09/2023
+              timedatectl
+              timedatectl set-timezone Asia/Bangkok
+              
+              #Create directory structure
+              mkdir -p /var/www/moodledata
+              #localcachedir
+              mkdir /localcache
 
-            #Mount NAS
-            mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 ${NasPrivateIp}:/moodledata /var/www/moodledata
-            
-            #Mount NFS persistent
-            echo '${NasPrivateIp}:/moodledata /var/www/moodledata  nfs nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2  0 0' >> /etc/fstab
+              #Mount NAS
+              mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 ${NasPrivateIp}:/moodledata /var/www/moodledata
+              
+              #Mount NFS persistent
+              echo '${NasPrivateIp}:/moodledata /var/www/moodledata  nfs nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2  0 0' >> /etc/fstab
 
-            #Run CloudFormation Init Script to install CloudWatch Agent
-            yum install -y amazon-cloudwatch-agent
-            /opt/aws/bin/cfn-init --configsets default --verbose --stack ${AWS::StackName} --resource WebLaunchTemplate --region ${AWS::Region}
+              #Run CloudFormation Init Script to install CloudWatch Agent
+              yum install -y amazon-cloudwatch-agent
+              /opt/aws/bin/cfn-init --configsets default --verbose --stack ${AWS::StackName} --resource WebLaunchTemplate --region ${AWS::Region}
 
-            #Run CloudFormation Init Scripts
-            /opt/aws/bin/cfn-init --configsets deploy_webserver --verbose --stack ${AWS::StackName} --resource WebLaunchTemplate --region ${AWS::Region}
-            /opt/aws/bin/cfn-signal --exit-code $? --stack ${AWS::StackName} --resource WebAutoScalingGroup --region ${AWS::Region}
+              #Run CloudFormation Init Scripts
+              /opt/aws/bin/cfn-init --configsets deploy_webserver --verbose --stack ${AWS::StackName} --resource WebLaunchTemplate --region ${AWS::Region}
+              /opt/aws/bin/cfn-signal --exit-code $? --stack ${AWS::StackName} --resource WebAutoScalingGroup --region ${AWS::Region}
                        
 Outputs:
   Opcachestatus:
