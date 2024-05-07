@@ -103,4 +103,5 @@ Resources:
 
 Outputs:
   ElastiCacheClusterEndpointAddress:
-    Value: !GetAtt ElastiCacheCluster.PrimaryEndPoint.Address
+    #Value: !GetAtt ElastiCacheCluster.PrimaryEndPoint.Address
+    Value: !GetAtt ElastiCacheCluster.ConfigurationEndpoint.Address
