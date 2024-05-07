@@ -87,7 +87,7 @@ Resources:
       CacheNodeType: !Ref ElastiCacheNodeType
       CacheSubnetGroupName: !Ref ElastiCacheSubnetGroup
       Engine: redis
-      EngineVersion: 5.0.6
+      EngineVersion: 6.2
       NumCacheClusters:
         !Ref NumberOfAZs
       Tags:
