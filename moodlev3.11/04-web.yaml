@@ -238,8 +238,8 @@ Resources:
       HealthCheckGracePeriod: 360
       HealthCheckType: ELB
       LaunchTemplate:
-           LaunchTemplateId: !Ref WebLaunchTemplate
-           Version: !GetAtt WebLaunchTemplate.LatestVersionNumber
+          LaunchTemplateId: !Ref WebLaunchTemplate
+          Version: !GetAtt WebLaunchTemplate.LatestVersionNumber
       MaxSize: !Ref WebAsgMax
       MinSize: !Ref WebAsgMin
       Tags:
@@ -303,8 +303,8 @@ Resources:
       ComparisonOperator: LessThanThreshold
       MetricName: CPUUtilization   
      
-  LaunchTemplate:
-    Type: AWS::EC2::LaunchTemplate
+  WebLaunchTemplate:
+    Type: AWS::AutoScaling::LaunchTemplate
     Metadata:
       AWS::CloudFormation::Init:
         configSets:

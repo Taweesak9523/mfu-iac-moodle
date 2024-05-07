@@ -64,9 +64,7 @@ Resources:
       Cooldown: 60
       HealthCheckGracePeriod: 120
       HealthCheckType: EC2
-      LaunchTemplate:
-         LaunchTemplateId: !Ref BastionLaunchTemplate
-         Version: !GetAtt BastionLaunchTemplate.LatestVersionNumber
+      LaunchConfigurationName: !Ref BastionLaunchConfiguration
       MaxSize: 1
       MinSize: 1
       Tags:
@@ -74,16 +72,15 @@ Resources:
           Value: !Join [ '', [ 'Bastion / ', !Ref 'AWS::StackName' ] ]
           PropagateAtLaunch: true
       VPCZoneIdentifier: !Ref Subnet
-  BastionLaunchTemplate:
-    Type: AWS::AutoScaling::LaunchTemplate
+  BastionLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
       IamInstanceProfile: !Ref BastionInstanceProfile
       ImageId: !Ref LatestAmiId
-      Monitoring:
-        Enabled: true
+      InstanceMonitoring: true
       InstanceType: !Ref BastionInstanceType
       KeyName: !Ref EC2KeyName
-      SecurityGroupsIds:
+      SecurityGroups:
         - !Ref BastionSecurityGroup
 
       #add new config bastion 07/09/2023
