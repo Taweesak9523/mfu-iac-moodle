@@ -145,7 +145,7 @@ Parameters:
     - m6i.xlarge
     - m6i.2xlarge
     ConstraintDescription: Must be a valid Amazon EC2 instance type.
-    Default: m5.xlarge
+    Default: m6i.xlarge
     Description: The Amazon EC2 instance type for your web instances.
     Type: String
   WebSecurityGroup:
@@ -304,7 +304,7 @@ Resources:
       MetricName: CPUUtilization   
      
   WebLaunchTemplate:
-    Type: AWS::AutoScaling::LaunchTemplate
+    Type: AWS::EC2::LaunchTemplate
     Metadata:
       AWS::CloudFormation::Init:
         configSets:

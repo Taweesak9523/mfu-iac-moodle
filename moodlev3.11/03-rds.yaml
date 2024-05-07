@@ -63,14 +63,6 @@ Parameters:
     Type: String
   DatabaseInstanceType:
     AllowedValues:
-      - db.m6i.large
-      - db.m6i.xlarge
-      - db.m6i.2xlarge
-      - db.m6i.4xlarge
-      - db.m6i.8xlarge
-      - db.m6i.12xlarge
-      - db.m6i.16xlarge
-      - db.m6i.24xlarge
       - db.r6i.large
       - db.r6i.xlarge
       - db.r6i.2xlarge
@@ -80,7 +72,7 @@ Parameters:
       - db.r6i.16xlarge
       - db.r6i.24xlarge
     ConstraintDescription: Must be a valid RDS instance class.
-    Default: db.r5.large
+    Default: db.r6i.large
     Description: The Amazon RDS database instance class.
     Type: String
   DatabasePort:

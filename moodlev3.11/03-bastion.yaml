@@ -75,27 +75,30 @@ Resources:
           PropagateAtLaunch: true
       VPCZoneIdentifier: !Ref Subnet
   BastionLaunchTemplate:
-    Type: AWS::AutoScaling::LaunchTemplate
+    Type: AWS::EC2::LaunchTemplate
     Properties:
-      IamInstanceProfile: !Ref BastionInstanceProfile
-      ImageId: !Ref LatestAmiId
-      Monitoring:
-        Enabled: true
-      InstanceType: !Ref BastionInstanceType
-      KeyName: !Ref EC2KeyName
-      SecurityGroupsIds:
-        - !Ref BastionSecurityGroup
+      LaunchTemplateData:
+        IamInstanceProfile:
+          Arn: !GetAtt BastionInstanceProfile.Arn
+        #IamInstanceProfile: !Ref BastionInstanceProfile
+        ImageId: !Ref LatestAmiId
+        Monitoring:
+          Enabled: true
+        InstanceType: !Ref BastionInstanceType
+        KeyName: !Ref EC2KeyName
+        SecurityGroupIds:
+          - !Ref BastionSecurityGroup
 
-      #add new config bastion 07/09/2023
-      UserData:
-        "Fn::Base64":
-          !Sub |
-            #!/bin/bash
-            yum update -y
-            # add new config date time 07/09/2023
-            
-            timedatectl
-            timedatectl set-timezone Asia/Bangkok
+        #add new config bastion 07/09/2023
+        UserData:
+          "Fn::Base64":
+            !Sub |
+              #!/bin/bash
+              yum update -y
+              # add new config date time 07/09/2023
+              
+              timedatectl
+              timedatectl set-timezone Asia/Bangkok
 
   BastionInstanceProfile:
     Type: AWS::IAM::InstanceProfile

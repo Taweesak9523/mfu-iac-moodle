@@ -225,14 +225,6 @@ Parameters:
     Type: String
   DatabaseInstanceType:
     AllowedValues:
-      - db.m6i.large
-      - db.m6i.xlarge
-      - db.m6i.2xlarge
-      - db.m6i.4xlarge
-      - db.m6i.8xlarge
-      - db.m6i.12xlarge
-      - db.m6i.16xlarge
-      - db.m6i.24xlarge
       - db.r6i.large
       - db.r6i.xlarge
       - db.r6i.2xlarge
@@ -242,7 +234,7 @@ Parameters:
       - db.r6i.16xlarge
       - db.r6i.24xlarge
     ConstraintDescription: Must be a valid RDS instance class.
-    Default: db.r5.large
+    Default: db.r6i.large
     Description: The Amazon RDS database instance class.
     Type: String
   DatabasePort:
@@ -348,7 +340,7 @@ Parameters:
       - m6i.xlarge
       - m6i.2xlarge
     ConstraintDescription: Must be a valid Amazon EC2 instance type.
-    Default: m5.xlarge
+    Default: m6i.xlarge
     Description: The Amazon EC2 instance type for your web instances.
     Type: String
   HostedZoneName:
@@ -600,7 +592,7 @@ Resources:
           !Ref DataSubnet4Cidr
         DataSubnet5Cidr:
           !Ref DataSubnet5Cidr
-      TemplateURL:  https://stou-moodle311-bucket.s3.ap-southeast-1.amazonaws.com/01-newvpc.yaml
+      TemplateURL:  https://mfu-ica-demo-moodle-bucket.s3.ap-southeast-1.amazonaws.com/01-newvpc.yaml
   securitygroups:
     DependsOn: vpc
     Type: AWS::CloudFormation::Stack
@@ -612,7 +604,7 @@ Resources:
           !Ref SshAccessCidr
         Vpc:
           !GetAtt [ vpc, Outputs.Vpc ]
-      TemplateURL: https://stou-moodle311-bucket.s3.ap-southeast-1.amazonaws.com/02-securitygroups.yaml
+      TemplateURL: https://mfu-ica-demo-moodle-bucket.s3.ap-southeast-1.amazonaws.com/02-securitygroups.yaml
   bastion:
     DependsOn: securitygroups
     Type: AWS::CloudFormation::Stack
@@ -626,7 +618,7 @@ Resources:
           !Ref EC2KeyName
         Subnet:
           !GetAtt [ vpc, Outputs.PublicSubnet ]
-      TemplateURL: https://stou-moodle311-bucket.s3.ap-southeast-1.amazonaws.com/03-bastion.yaml
+      TemplateURL: https://mfu-ica-demo-moodle-bucket.s3.ap-southeast-1.amazonaws.com/03-bastion.yaml
   publicalb:
     DependsOn: securitygroups
     Type: AWS::CloudFormation::Stack
@@ -642,7 +634,7 @@ Resources:
           !GetAtt [ securitygroups, Outputs.PublicAlbSecurityGroup ]
         Vpc:
           !GetAtt [ vpc, Outputs.Vpc ]
-      TemplateURL: https://stou-moodle311-bucket.s3.ap-southeast-1.amazonaws.com/03-publicalb.yaml
+      TemplateURL: https://mfu-ica-demo-moodle-bucket.s3.ap-southeast-1.amazonaws.com/03-publicalb.yaml
   rds:
     DependsOn: [ securitygroups, nas ]
     Type: AWS::CloudFormation::Stack
@@ -670,7 +662,7 @@ Resources:
           !GetAtt [ vpc, Outputs.DataSubnet ]
         NumberOfSubnets:
           !Ref NumberOfAZs
-      TemplateURL: https://stou-moodle311-bucket.s3.ap-southeast-1.amazonaws.com/03-rds.yaml
+      TemplateURL: https://mfu-ica-demo-moodle-bucket.s3.ap-southeast-1.amazonaws.com/03-rds.yaml
   sessioncache:
     Condition: DeployWithSessionCache
     DependsOn: securitygroups
@@ -687,7 +679,7 @@ Resources:
           !GetAtt [ securitygroups, Outputs.ElastiCacheSecurityGroup ]
         NumberOfAZs:
           !Ref NumberOfAZs
-      TemplateURL: https://stou-moodle311-bucket.s3.ap-southeast-1.amazonaws.com/03-elasticache.yaml
+      TemplateURL: https://mfu-ica-demo-moodle-bucket.s3.ap-southeast-1.amazonaws.com/03-elasticache.yaml
   applicationcache:
     Condition: DeployApplicationCache
     DependsOn: securitygroups
@@ -704,7 +696,7 @@ Resources:
           !GetAtt [ securitygroups, Outputs.ElastiCacheSecurityGroup ]
         NumberOfAZs:
           !Ref NumberOfAZs
-      TemplateURL: https://stou-moodle311-bucket.s3.ap-southeast-1.amazonaws.com/03-elasticache.yaml
+      TemplateURL: https://mfu-ica-demo-moodle-bucket.s3.ap-southeast-1.amazonaws.com/03-elasticache.yaml
   webnocache:
     DependsOn: [ publicalb, rds ]
     Condition: DeployWithoutSessionCache
@@ -745,7 +737,7 @@ Resources:
           ''
         NasPrivateIp:
           !GetAtt [ nas, Outputs.NasPrivateIp]
-      TemplateURL: https://stou-moodle311-bucket.s3.ap-southeast-1.amazonaws.com/04-web.yaml
+      TemplateURL: https://mfu-ica-demo-moodle-bucket.s3.ap-southeast-1.amazonaws.com/04-web.yaml
   webcached:
     DependsOn: [ publicalb, rds, sessioncache ]
     Condition: DeployWithSessionCache
@@ -786,7 +778,7 @@ Resources:
           !GetAtt sessioncache.Outputs.ElastiCacheClusterEndpointAddress
         NasPrivateIp:
           !GetAtt [ nas, Outputs.NasPrivateIp]
-      TemplateURL: https://stou-moodle311-bucket.s3.ap-southeast-1.amazonaws.com/04-web.yaml
+      TemplateURL: https://mfu-ica-demo-moodle-bucket.s3.ap-southeast-1.amazonaws.com/04-web.yaml
   cloudfront:
     Condition: DeployCloudFront
     DependsOn: publicalb    
@@ -799,7 +791,7 @@ Resources:
           !GetAtt [ publicalb, Outputs.PublicAlbDnsName ]
         DomainName:
           !Ref DomainName
-      TemplateURL: https://stou-moodle311-bucket.s3.ap-southeast-1.amazonaws.com/04-cloudfront.yaml
+      TemplateURL: https://mfu-ica-demo-moodle-bucket.s3.ap-southeast-1.amazonaws.com/04-cloudfront.yaml
   route53:
     Condition: DeployRoute53
     DependsOn: publicalb
@@ -814,7 +806,7 @@ Resources:
           !Ref HostedZoneName
         DomainName:
           !Ref DomainName
-      TemplateURL: https://stou-moodle311-bucket.s3.ap-southeast-1.amazonaws.com/05-route53.yaml
+      TemplateURL: https://mfu-ica-demo-moodle-bucket.s3.ap-southeast-1.amazonaws.com/05-route53.yaml
   nas:
     DependsOn: [securitygroups, bastion]
     Type: AWS::CloudFormation::Stack
@@ -832,7 +824,7 @@ Resources:
           !GetAtt [ securitygroups, Outputs.NasSecurityGroup ]
         Subnet:
           !GetAtt [ vpc, Outputs.DataSubnet0 ]
-      TemplateURL: https://stou-moodle311-bucket.s3.ap-southeast-1.amazonaws.com/03-nas.yaml
+      TemplateURL: https://mfu-ica-demo-moodle-bucket.s3.ap-southeast-1.amazonaws.com/03-nas.yaml
 
 Outputs:
   DnsName:

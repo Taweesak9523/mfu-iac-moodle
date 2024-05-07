@@ -68,3 +68,4 @@ sudo amazon-linux-extras install epel
 yum install nmon
 export NMON=mndc
 
+https://mfu-ica-demo-moodle-bucket.s3.ap-southeast-1.amazonaws.com
