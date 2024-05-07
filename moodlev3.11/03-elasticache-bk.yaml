@@ -60,40 +60,41 @@ Parameters:
     Type: List<AWS::EC2::Subnet::Id>
 
 Resources:
-  #ElastiCacheCluster:
-    #Type: AWS::ElastiCache::ReplicationGroup
+  ElastiCacheCluster:
+    #Type: AWS::ElastiCache::CacheCluster
     #Properties:
-      #ReplicationGroupId: !Ref ElastiCacheClusterName
-      #ReplicationGroupDescription: !Ref ElastiCacheClusterName
-      #AtRestEncryptionEnabled: true
-      #TransitEncryptionEnabled: false
-      #AutoMinorVersionUpgrade: false
-      #MultiAZEnabled: true
+      #AZMode: cross-az
       #CacheNodeType: !Ref ElastiCacheNodeType
       #CacheSubnetGroupName: !Ref ElastiCacheSubnetGroup
+      #ClusterName: !Ref ElastiCacheClusterName
+      #add config dat 06092023
+      #MultiAZEnabled: true
       #Engine: redis
-      #EngineVersion: 6.2
-      #NumCacheClusters:
-        #!Ref NumberOfAZs
-      #Tags:
-        #- Key: Name
-          #Value: !Join [ '', [ 'Moodle / ', !Ref 'AWS::StackName' ] ]
-      #SecurityGroupIds:
-      #- !Ref ElastiCacheSecurityGroup
-  ElastiCacheCluster:
-    Type: AWS::ElastiCache::CacheCluster
+      #EngineVersion: 5.0.6
+      #NumCacheNodes: 1
+      #NumReplicasPerNodeGroup: 1
+      #CacheParameterGroupName: default.redis5.0
+      #AtRestEncryptionEnabled: true
+      #AutoMinorVersionUpgrade: false
+    Type: AWS::ElastiCache::ReplicationGroup
     Properties:
-      AZMode: cross-az
+      ReplicationGroupId: !Ref ElastiCacheClusterName
+      ReplicationGroupDescription: !Ref ElastiCacheClusterName
+      AtRestEncryptionEnabled: true
+      TransitEncryptionEnabled: false
+      AutoMinorVersionUpgrade: false
+      MultiAZEnabled: true
       CacheNodeType: !Ref ElastiCacheNodeType
       CacheSubnetGroupName: !Ref ElastiCacheSubnetGroup
-      ClusterName: !Ref ElastiCacheClusterName
-      Engine: memcached
-      NumCacheNodes: !Ref NumberOfAZs
+      Engine: redis
+      EngineVersion: 6.2
+      NumCacheClusters:
+        !Ref NumberOfAZs
       Tags:
         - Key: Name
           Value: !Join [ '', [ 'Moodle / ', !Ref 'AWS::StackName' ] ]
-      VpcSecurityGroupIds:
-      - !Ref ElastiCacheSecurityGroup        
+      SecurityGroupIds:
+      - !Ref ElastiCacheSecurityGroup       
   ElastiCacheSubnetGroup: 
     Type: AWS::ElastiCache::SubnetGroup
     Properties: 

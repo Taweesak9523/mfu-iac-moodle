@@ -500,13 +500,13 @@ Parameters:
     Type: String
   NasInstanceType:
     AllowedValues:
-      - a1.medium
-      - a1.large
-      - a1.xlarge
-      - a1.2xlarge
-      - a1.4xlarge	
+      - c6g.medium
+      - c6g.large
+      - c6g.xlarge
+      - c6g.2xlarge
+      - c6g.4xlarge	
     ConstraintDescription: Must be a valid Amazon EC2 instance type.
-    Default: a1.large
+    Default: c6g.large
     Description: The Amazon EC2 ARM instance type for your nas instance.
     Type: String
   NasInstanceAdditionalDiskType:

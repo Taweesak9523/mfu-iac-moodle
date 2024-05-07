@@ -1526,19 +1526,14 @@ Resources:
                   // Configure Session Cache
                   $SessionEndpoint = '${ElastiCacheClusterEndpointAddress}';
                   if ($SessionEndpoint != '') {
-                    $CFG->session_redis_host = $SessionEndpoint;
-                    $CFG->session_handler_class = '\core\session\redis';
-                    $CFG->session_redis_port = 6379;                     // Optional.
-                    $CFG->session_redis_database = 0;                    // Optional, default is db 0.
-                    //$CFG->session_redis_auth = '';                       // Optional, default is don't set one.
-                    //$CFG->session_redis_prefix = '';                     // Optional, default is don't set one.
-                    $CFG->session_redis_acquire_lock_timeout = 120;      // Default is 2 minutes.
-                    $CFG->session_redis_acquire_lock_warn = 0;           // If set logs early warning if a lock has not been acquried.
-                    $CFG->session_redis_lock_expire = 7200;              // Optional, defaults to session timeout.
-                    $CFG->session_redis_lock_retry = 100;                // Optional wait between lock attempts in ms, default is 100.
-                    $CFG->session_redis_serializer_use_igbinary = false; // Optional, default is PHP builtin serializer.
-                    $CFG->session_redis_compressor = 'none';       
-                    }
+                    $CFG->dbsessions = false;
+                    $CFG->session_handler_class = '\core\session\memcached';
+                    $CFG->session_memcached_save_path = $SessionEndpoint;
+                    $CFG->session_memcached_prefix = 'memc.sess.key.';
+                    $CFG->session_memcached_acquire_lock_timeout = 120;
+                    $CFG->session_memcached_lock_expire = 60;
+                    $CFG->session_memcached_lock_retry_sleep = 150;
+                  }
                   //@error_reporting(E_ALL | E_STRICT);   // NOT FOR PRODUCTION SERVERS!
                   //@ini_set('display_errors', '1');         // NOT FOR PRODUCTION SERVERS!
                   //$CFG->debug = (E_ALL | E_STRICT);   // === DEBUG_DEVELOPER - NOT FOR PRODUCTION SERVERS!
@@ -1613,18 +1608,13 @@ Resources:
                   // Configure Session Cache
                   $SessionEndpoint = '${ElastiCacheClusterEndpointAddress}';
                   if ($SessionEndpoint != '') {
-                    $CFG->session_redis_host = $SessionEndpoint;
-                    $CFG->session_handler_class = '\core\session\redis';
-                    $CFG->session_redis_port = 6379;                     // Optional.
-                    $CFG->session_redis_database = 0;                    // Optional, default is db 0.
-                    //$CFG->session_redis_auth = '';                       // Optional, default is don't set one.
-                    //$CFG->session_redis_prefix = '';                     // Optional, default is don't set one.
-                    $CFG->session_redis_acquire_lock_timeout = 120;      // Default is 2 minutes.
-                    $CFG->session_redis_acquire_lock_warn = 0;           // If set logs early warning if a lock has not been acquried.
-                    $CFG->session_redis_lock_expire = 7200;              // Optional, defaults to session timeout.
-                    $CFG->session_redis_lock_retry = 100;                // Optional wait between lock attempts in ms, default is 100.
-                    $CFG->session_redis_serializer_use_igbinary = false; // Optional, default is PHP builtin serializer.
-                    $CFG->session_redis_compressor = 'none';       
+                    $CFG->dbsessions = false;
+                    $CFG->session_handler_class = '\core\session\memcached';
+                    $CFG->session_memcached_save_path = $SessionEndpoint;
+                    $CFG->session_memcached_prefix = 'memc.sess.key.';
+                    $CFG->session_memcached_acquire_lock_timeout = 120;
+                    $CFG->session_memcached_lock_expire = 60;
+                    $CFG->session_memcached_lock_retry_sleep = 150;
                   }
                   //@error_reporting(E_ALL | E_STRICT);   // NOT FOR PRODUCTION SERVERS!
                   //@ini_set('display_errors', '1');         // NOT FOR PRODUCTION SERVERS!
