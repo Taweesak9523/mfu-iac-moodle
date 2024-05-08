@@ -1654,10 +1654,10 @@ Resources:
                   #!/bin/bash -xe
                   
                   #Install memcached and then remove it. Memcached is not actually needed. We install amazon-elasticache-cluster-client.so instead. However Moodle does not detect memcached is installed. Therefore, this tricks Moodle into thinking it is installed.
-                  sudo yum install -y php-pecl-memcached php-redis
+                  sudo yum install -y php-pecl-memcached
                   sudo yum remove -y php-pecl-memcached
 
-                  Install elasticache-cluster-client.so
+                  #Install elasticache-cluster-client.so
                   wget -P /tmp/ https://elasticache-downloads.s3.amazonaws.com/ClusterClient/PHP-7.3/latest-64bit
                   tar -xf '/tmp/latest-64bit'
                   cp '/tmp/amazon-elasticache-cluster-client.so' /usr/lib64/php/modules/
