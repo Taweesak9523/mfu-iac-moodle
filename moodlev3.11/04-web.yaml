@@ -1728,7 +1728,7 @@ Resources:
         Monitoring:
           Enabled: true
         KeyName: !Ref EC2KeyName
-        SecurityGroupsIds:
+        SecurityGroupIds:
         - !Ref WebSecurityGroup
         UserData:
           "Fn::Base64":
