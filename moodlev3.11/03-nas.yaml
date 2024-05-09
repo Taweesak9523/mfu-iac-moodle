@@ -85,6 +85,7 @@ Resources:
       Path: /
       ManagedPolicyArns: 
       - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
   EC2Instance: 
     Type: AWS::EC2::Instance
     Metadata:

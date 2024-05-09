@@ -5,6 +5,7 @@
     - name=custom-mysql-aurora3-cluster
     - character_set_server=utf8mb4
     - time_zone=Asia/Bangkok
+    - innodb_default_row_format	= DYNAMIC
 #3 Create Instane parameter group Name"custom-mysql-aurora3-instance" and cofig parameter "max_connection" to "16000"
     - family=aurora-mysql8.0
     - name=custom-mysql-aurora3-instance

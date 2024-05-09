@@ -192,6 +192,7 @@ Resources:
       Path: /
       ManagedPolicyArns: 
       - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
       Policies:
       - PolicyName: logs
         PolicyDocument:

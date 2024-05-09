@@ -66,8 +66,8 @@ Resources:
       GroupDescription: Security group for ElastiCache cache cluster
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 6379
-          ToPort: 6379
+          FromPort: 11211
+          ToPort: 11211
           SourceSecurityGroupId: !Ref WebSecurityGroup
       VpcId:
         !Ref Vpc
