@@ -105,7 +105,7 @@ Resources:
             /tmp/deploy_moodle.sh:
               content:  !Sub |
                 #!/bin/bash -xe
-                wget -O /tmp/moodle.tgz https://stou-moodle-web-download.s3.ap-southeast-1.amazonaws.com/moodle-3.11.13.tgz
+                wget -O /tmp/moodle.tgz https://moodle-script-install.s3.ap-southeast-1.amazonaws.com/moodle/mfu_lms_moodle_full_311.tgz
                 tar -xvzf /tmp/moodle.tgz --strip-components=1 -C /moodledata/
                 wget -O /moodledata/lib/aws.phar https://docs.aws.amazon.com/aws-sdk-php/v3/download/aws.phar
                 #dataroot
