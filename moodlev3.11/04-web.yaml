@@ -663,8 +663,8 @@ Resources:
                 ;             pm.process_idle_timeout   - The number of seconds after which
                 ;                                         an idle process will be killed.
                 ; Note: This value is mandatory.
-                pm = dynamic
-
+                ;pm = dynamic
+                pm = static
                 ; The number of child processes to be created when pm is set to 'static' and the
                 ; maximum number of child processes when pm is set to 'dynamic' or 'ondemand'.
                 ; This value sets the limit on the number of simultaneous requests that will be
@@ -1501,7 +1501,7 @@ Resources:
                     'dbsocket' => false,
                     'dbport' => '',
                     'dbhandlesoptions' => false,
-                    'dbcollation' => 'utf8mb4_0900_ai_ci',
+                    'dbcollation' => 'utf8mb4_general_ci',
                   );
                   // Hostname definition //
                   $hostname = '${DomainName}';
@@ -1583,7 +1583,7 @@ Resources:
                     'dbsocket' => false,
                     'dbport' => '',
                     'dbhandlesoptions' => false,
-                    'dbcollation' => 'utf8mb4_0900_ai_ci',
+                    'dbcollation' => 'utf8mb4_general_ci',
                   );
                   // Hostname definition //
                   $hostname = '${DomainName}';
