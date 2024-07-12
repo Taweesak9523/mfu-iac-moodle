@@ -225,6 +225,8 @@ Parameters:
     Type: String
   DatabaseInstanceType:
     AllowedValues:
+      - db.r6g.large
+      - db.r6g.xlarge
       - db.r6i.large
       - db.r6i.xlarge
       - db.r6i.2xlarge
@@ -234,7 +236,7 @@ Parameters:
       - db.r6i.16xlarge
       - db.r6i.24xlarge
     ConstraintDescription: Must be a valid RDS instance class.
-    Default: db.r6i.large
+    Default: db.r6g.large
     Description: The Amazon RDS database instance class.
     Type: String
   DatabasePort:
@@ -272,6 +274,8 @@ Parameters:
     Type: String
   SessionCacheNodeType:
     AllowedValues:
+      - cache.t4g.small
+      - cache.t4g.medium
       - cache.t3.micro
       - cache.t3.small
       - cache.t3.medium
@@ -279,7 +283,7 @@ Parameters:
       - cache.m5.xlarge
       - cache.m5.2xlarge
     ConstraintDescription: Must be a valid Amazon ElastiCache node type.
-    Default: cache.t3.micro
+    Default: cache.t4g.small
     Description: The Amazon ElastiCache cluster node type.
     Type: String
   UseApplicationCacheBoolean:
@@ -291,6 +295,8 @@ Parameters:
     Type: String
   ApplicationCacheNodeType:
     AllowedValues:
+      - cache.t4g.small
+      - cache.t4g.medium
       - cache.t3.micro
       - cache.t3.small
       - cache.t3.medium
@@ -298,7 +304,7 @@ Parameters:
       - cache.m5.xlarge
       - cache.m5.2xlarge
     ConstraintDescription: Must be a valid Amazon ElastiCache node type.
-    Default: cache.t3.micro
+    Default: cache.t4g.small
     Description: The Amazon ElastiCache cluster node type.
     Type: String
   EC2KeyName:
@@ -326,6 +332,10 @@ Parameters:
     AllowedValues:
       #- t3.nano
       #- t3.micro
+      - c6g.large
+      - c6g.xlarge
+      - c6g.2xlarge
+      - c6g.4xlarge
       - t3.small
       - t3.medium
       - t3.large
@@ -340,7 +350,7 @@ Parameters:
       - m6i.xlarge
       - m6i.2xlarge
     ConstraintDescription: Must be a valid Amazon EC2 instance type.
-    Default: m6i.xlarge
+    Default: c6g.xlarge
     Description: The Amazon EC2 instance type for your web instances.
     Type: String
   HostedZoneName:
