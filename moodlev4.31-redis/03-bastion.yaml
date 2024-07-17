@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Reference Architecture to host Moodle on AWS - Creates bastion (desired:0; min:0; max:1) Auto Scaling group
+
+Metadata:
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: AWS Parameters
+      Parameters:
+        - EC2KeyName
+        - BastionInstanceType
+        - BastionSecurityGroup
+        - Subnet
+    ParameterLabels:
+      BastionSecurityGroup:
+        default: Bastion Security Group
+      BastionInstanceType:
+        default: Instance Type
+      EC2KeyName:
+        default: Existing Key Pair
+      Subnet:
+        default: Subnets
+
+Parameters:
+
+  BastionSecurityGroup:
+    Description: Select the bastion security group.
+    Type: AWS::EC2::SecurityGroup::Id
+  BastionInstanceType:
+    AllowedValues:
+    - t3.nano
+    - t3.micro
+    - t3.small
+    - t3.medium
+    - t3.large
+    - t3.xlarge
+    - t3.2xlarge
+    - m5.large 
+    - m5.xlarge 
+    - m5.2xlarge 
+    - m5.4xlarge 
+    - m5.12xlarge 
+    - m5.24xlarge 
+    ConstraintDescription: Must be a valid Amazon EC2 instance type.
+    Default: t3.nano
+    Description: Bastion EC2 instance type.
+    Type: String
+  EC2KeyName:
+    Description: Name of an EC2 KeyPair. Your bastion instances will launch with this KeyPair.
+    Type: AWS::EC2::KeyPair::KeyName
+  Subnet:
+    Description: Select existing subnets. The number selected must match the number of subnets above. Subnets selected must be in separate AZs.
+    Type: List<AWS::EC2::Subnet::Id>
+  LatestAmiId :
+    Type : AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+
+Resources:
+  BastionAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      Cooldown: 60
+      HealthCheckGracePeriod: 120
+      HealthCheckType: EC2
+      LaunchTemplate:
+         LaunchTemplateId: !Ref BastionLaunchTemplate
+         Version: !GetAtt BastionLaunchTemplate.LatestVersionNumber
+      MaxSize: 1
+      MinSize: 1
+      Tags:
+        - Key: Name
+          Value: !Join [ '', [ 'Bastion / ', !Ref 'AWS::StackName' ] ]
+          PropagateAtLaunch: true
+      VPCZoneIdentifier: !Ref Subnet
+  BastionLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        IamInstanceProfile:
+          Arn: !GetAtt BastionInstanceProfile.Arn
+        #IamInstanceProfile: !Ref BastionInstanceProfile
+        ImageId: !Ref LatestAmiId
+        Monitoring:
+          Enabled: true
+        InstanceType: !Ref BastionInstanceType
+        KeyName: !Ref EC2KeyName
+        SecurityGroupIds:
+          - !Ref BastionSecurityGroup
+
+        #add new config bastion 07/09/2023
+        UserData:
+          "Fn::Base64":
+            !Sub |
+              #!/bin/bash
+              yum update -y
+              # add new config date time 07/09/2023
+              
+              timedatectl
+              timedatectl set-timezone Asia/Bangkok
+
+  BastionInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: '/'
+      Roles:
+      - !Ref BastionInstanceRole
+  BastionInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: '/'
+      Policies:
+      - PolicyName: logs
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            - logs:DescribeLogStreams
+            Resource:
+            - arn:aws:logs:*:*:*

@@ -129,9 +129,6 @@ Parameters:
     Type: String
   WebInstanceType:
     AllowedValues:
-    - c6g.large
-    - c6g.xlarge
-    - c6g.2xlarge
     - t3.nano
     - t3.micro
     - t3.small
@@ -139,16 +136,16 @@ Parameters:
     - t3.large
     - t3.xlarge
     - t3.2xlarge
-    - m6i.large
-    - m6i.xlarge
-    - m6i.2xlarge
-    - m6i.4xlarge
-    - m6i.12xlarge
-    - m6i.24xlarge
-    - m6i.xlarge
-    - m6i.2xlarge
+    - m5.large
+    - m5.xlarge
+    - m5.2xlarge
+    - m5.4xlarge
+    - m5.12xlarge
+    - m5.24xlarge
+    - m6a.xlarge
+    - m6a.2xlarge
     ConstraintDescription: Must be a valid Amazon EC2 instance type.
-    Default: c6g.large
+    Default: m5.xlarge
     Description: The Amazon EC2 instance type for your web instances.
     Type: String
   WebSecurityGroup:
@@ -164,7 +161,7 @@ Parameters:
     Default: en
   LatestAmiId :
     Type : AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-arm64-gp2
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
   NasPrivateIp:
     Description: NAS ip address
     Type: String
@@ -195,7 +192,6 @@ Resources:
       Path: /
       ManagedPolicyArns: 
       - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
-      - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
       Policies:
       - PolicyName: logs
         PolicyDocument:
@@ -241,9 +237,7 @@ Resources:
       Cooldown: 60
       HealthCheckGracePeriod: 360
       HealthCheckType: ELB
-      LaunchTemplate:
-          LaunchTemplateId: !Ref WebLaunchTemplate
-          Version: !GetAtt WebLaunchTemplate.LatestVersionNumber
+      LaunchConfigurationName: !Ref WebLaunchConfiguration
       MaxSize: !Ref WebAsgMax
       MinSize: !Ref WebAsgMin
       Tags:
@@ -307,8 +301,8 @@ Resources:
       ComparisonOperator: LessThanThreshold
       MetricName: CPUUtilization   
      
-  WebLaunchTemplate:
-    Type: AWS::EC2::LaunchTemplate
+  WebLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
     Metadata:
       AWS::CloudFormation::Init:
         configSets:
@@ -424,8 +418,8 @@ Resources:
                content: !Sub |
                  [cfn-auto-reloader-hook]
                  triggers=post.update
-                 path=Resources.WebLaunchTemplate.Metadata.AWS::CloudFormation::Init.02_config-amazon-cloudwatch-agent
-                 action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource WebLaunchTemplate --region ${AWS::Region} --configsets UpdateEnvironment
+                 path=Resources.WebLaunchConfiguration.Metadata.AWS::CloudFormation::Init.02_config-amazon-cloudwatch-agent
+                 action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource WebLaunchConfiguration --region ${AWS::Region} --configsets UpdateEnvironment
                  runas=root
                mode: '000400'
                owner: root
@@ -666,8 +660,8 @@ Resources:
                 ;             pm.process_idle_timeout   - The number of seconds after which
                 ;                                         an idle process will be killed.
                 ; Note: This value is mandatory.
-                ;pm = dynamic
-                pm = static
+                pm = dynamic
+
                 ; The number of child processes to be created when pm is set to 'static' and the
                 ; maximum number of child processes when pm is set to 'dynamic' or 'ondemand'.
                 ; This value sets the limit on the number of simultaneous requests that will be
@@ -1504,7 +1498,7 @@ Resources:
                     'dbsocket' => false,
                     'dbport' => '',
                     'dbhandlesoptions' => false,
-                    'dbcollation' => 'utf8mb4_general_ci',
+                    'dbcollation' => 'utf8mb4_0900_ai_ci',
                   );
                   // Hostname definition //
                   $hostname = '${DomainName}';
@@ -1530,14 +1524,19 @@ Resources:
                   // Configure Session Cache
                   $SessionEndpoint = '${ElastiCacheClusterEndpointAddress}';
                   if ($SessionEndpoint != '') {
-                    $CFG->dbsessions = false;
-                    $CFG->session_handler_class = '\core\session\memcached';
-                    $CFG->session_memcached_save_path = $SessionEndpoint;
-                    $CFG->session_memcached_prefix = 'memc.sess.key.';
-                    $CFG->session_memcached_acquire_lock_timeout = 120;
-                    $CFG->session_memcached_lock_expire = 60;
-                    $CFG->session_memcached_lock_retry_sleep = 150;
-                  }
+                    $CFG->session_redis_host = $SessionEndpoint;
+                    $CFG->session_handler_class = '\core\session\redis';
+                    $CFG->session_redis_port = 6379;                     // Optional.
+                    $CFG->session_redis_database = 0;                    // Optional, default is db 0.
+                    //$CFG->session_redis_auth = '';                       // Optional, default is don't set one.
+                    //$CFG->session_redis_prefix = '';                     // Optional, default is don't set one.
+                    $CFG->session_redis_acquire_lock_timeout = 120;      // Default is 2 minutes.
+                    $CFG->session_redis_acquire_lock_warn = 0;           // If set logs early warning if a lock has not been acquried.
+                    $CFG->session_redis_lock_expire = 7200;              // Optional, defaults to session timeout.
+                    $CFG->session_redis_lock_retry = 100;                // Optional wait between lock attempts in ms, default is 100.
+                    $CFG->session_redis_serializer_use_igbinary = false; // Optional, default is PHP builtin serializer.
+                    $CFG->session_redis_compressor = 'none';       
+                    }
                   //@error_reporting(E_ALL | E_STRICT);   // NOT FOR PRODUCTION SERVERS!
                   //@ini_set('display_errors', '1');         // NOT FOR PRODUCTION SERVERS!
                   //$CFG->debug = (E_ALL | E_STRICT);   // === DEBUG_DEVELOPER - NOT FOR PRODUCTION SERVERS!
@@ -1586,7 +1585,7 @@ Resources:
                     'dbsocket' => false,
                     'dbport' => '',
                     'dbhandlesoptions' => false,
-                    'dbcollation' => 'utf8mb4_general_ci',
+                    'dbcollation' => 'utf8mb4_0900_ai_ci',
                   );
                   // Hostname definition //
                   $hostname = '${DomainName}';
@@ -1612,13 +1611,18 @@ Resources:
                   // Configure Session Cache
                   $SessionEndpoint = '${ElastiCacheClusterEndpointAddress}';
                   if ($SessionEndpoint != '') {
-                    $CFG->dbsessions = false;
-                    $CFG->session_handler_class = '\core\session\memcached';
-                    $CFG->session_memcached_save_path = $SessionEndpoint;
-                    $CFG->session_memcached_prefix = 'memc.sess.key.';
-                    $CFG->session_memcached_acquire_lock_timeout = 120;
-                    $CFG->session_memcached_lock_expire = 60;
-                    $CFG->session_memcached_lock_retry_sleep = 150;
+                    $CFG->session_redis_host = $SessionEndpoint;
+                    $CFG->session_handler_class = '\core\session\redis';
+                    $CFG->session_redis_port = 6379;                     // Optional.
+                    $CFG->session_redis_database = 0;                    // Optional, default is db 0.
+                    //$CFG->session_redis_auth = '';                       // Optional, default is don't set one.
+                    //$CFG->session_redis_prefix = '';                     // Optional, default is don't set one.
+                    $CFG->session_redis_acquire_lock_timeout = 120;      // Default is 2 minutes.
+                    $CFG->session_redis_acquire_lock_warn = 0;           // If set logs early warning if a lock has not been acquried.
+                    $CFG->session_redis_lock_expire = 7200;              // Optional, defaults to session timeout.
+                    $CFG->session_redis_lock_retry = 100;                // Optional wait between lock attempts in ms, default is 100.
+                    $CFG->session_redis_serializer_use_igbinary = false; // Optional, default is PHP builtin serializer.
+                    $CFG->session_redis_compressor = 'none';       
                   }
                   //@error_reporting(E_ALL | E_STRICT);   // NOT FOR PRODUCTION SERVERS!
                   //@ini_set('display_errors', '1');         // NOT FOR PRODUCTION SERVERS!
@@ -1658,20 +1662,22 @@ Resources:
                   #!/bin/bash -xe
                   
                   #Install memcached and then remove it. Memcached is not actually needed. We install amazon-elasticache-cluster-client.so instead. However Moodle does not detect memcached is installed. Therefore, this tricks Moodle into thinking it is installed.
-                  sudo yum install -y php-pecl-memcached
-                  sudo yum remove -y php-pecl-memcached
-
-                  #Install elasticache-cluster-client.so
-                  wget -P /tmp/ https://elasticache-downloads.s3.amazonaws.com/ClusterClient/PHP-7.3/latest-64bit-arm
-                  tar -xf '/tmp/latest-64bit-arm.tar.gz'
+                  sudo yum install -y php-redis
+                  
+                  
+                  wget -P /tmp/ https://elasticache-downloads.s3.amazonaws.com/ClusterClient/PHP-7.3/latest-64bit
+                  tar -xf '/tmp/latest-64bit' 
                   cp '/tmp/amazon-elasticache-cluster-client.so' /usr/lib64/php/modules/
-                  if [ ! -f /etc/php.d/50-memcached.ini ]; then
-                      touch /etc/php.d/50-memcached.ini
+                  if [ ! -f /etc/php.d/20-redis.ini ]; then
+                      touch /etc/php.d/20-redis.ini
                   fi
-                  echo 'extension=/usr/lib64/php/modules/amazon-elasticache-cluster-client.so;' >> /etc/php.d/50-memcached.ini
-                  echo 'extension=igbinary.so;' >> /etc/php.d/50-memcached.ini
+
+                  echo 'extension=/usr/lib64/php/modules/amazon-elasticache-cluster-client.so;' >> /etc/php.d/20-redis.ini
+                  echo 'extension=igbinary.so;' >> /etc/php.d/20-redis.ini
+                  
+                  
                   #update Moodle source to use DYNAMIC_CLIENT_MODE so Moodle can detect changes to the elasticache cluster membership
-                  sed -i '/\$this->options\[Memcached::OPT_BUFFER_WRITES\] = \$bufferwrites;/a \ \ \ \ \ \ \ \ $this->options[Memcached::OPT_CLIENT_MODE] = Memcached::DYNAMIC_CLIENT_MODE;' /var/www/moodledata/cache/stores/memcached/lib.php
+                  #sed -i '/\$this->options\[Memcached::OPT_BUFFER_WRITES\] = \$bufferwrites;/a \ \ \ \ \ \ \ \ $this->options[Memcached::OPT_CLIENT_MODE] = Memcached::DYNAMIC_CLIENT_MODE;' /var/www/moodledata/cache/stores/memcached/lib.php
                   
               mode: 000500
               owner: root
@@ -1718,51 +1724,43 @@ Resources:
                 enabled: true
                 ensureRunning: true
     Properties:
-      LaunchTemplateData:
-        BlockDeviceMappings:
-        - DeviceName: /dev/xvda
-          Ebs:
-            DeleteOnTermination: true
-            VolumeSize: 10 
-            VolumeType: gp3
-        IamInstanceProfile: 
-          Arn:  !GetAtt WebInstanceProfile.Arn
-        ImageId: !Ref LatestAmiId
-        InstanceType: !Ref WebInstanceType
-        Monitoring:
-          Enabled: true
-        KeyName: !Ref EC2KeyName
-        SecurityGroupIds:
-        - !Ref WebSecurityGroup
-        UserData:
-          "Fn::Base64":
-            !Sub |
-              #!/bin/bash -xe
-              yum update -y
+      IamInstanceProfile: !Ref WebInstanceProfile
+      ImageId: !Ref LatestAmiId
+      InstanceMonitoring: true
+      InstanceType: !Ref WebInstanceType
+      KeyName: !Ref EC2KeyName
+      SecurityGroups:
+      - !Ref WebSecurityGroup
+      UserData:
+        "Fn::Base64":
+          !Sub |
+            #!/bin/bash -xe
+            yum update -y
 
-              # add new config date time 07/09/2023
-              timedatectl
-              timedatectl set-timezone Asia/Bangkok
-              
-              #Create directory structure
-              mkdir -p /var/www/moodledata
-              #localcachedir
-              mkdir /localcache
+            # add new config date time 07/09/2023
+            timedatectl
+            timedatectl set-timezone Asia/Bangkok
+            
+            #Create directory structure
+            mkdir -p /var/www/moodledata
+            #localcachedir
+            mkdir /localcache
 
-              #Mount NAS
-              mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 ${NasPrivateIp}:/moodledata /var/www/moodledata
-              
-              #Mount NFS persistent
-              echo '${NasPrivateIp}:/moodledata /var/www/moodledata  nfs nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2  0 0' >> /etc/fstab
+            #Mount NAS
+            mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 ${NasPrivateIp}:/moodledata /var/www/moodledata
+            
+            #Mount NFS persistent
+            echo '${NasPrivateIp}:/moodledata /var/www/moodledata  nfs nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2  0 0' >> /etc/fstab
 
-              #Run CloudFormation Init Script to install CloudWatch Agent
-              yum install -y amazon-cloudwatch-agent
-              /opt/aws/bin/cfn-init --configsets default --verbose --stack ${AWS::StackName} --resource WebLaunchTemplate --region ${AWS::Region}
+            #Run CloudFormation Init Script to install CloudWatch Agent
+            yum install -y amazon-cloudwatch-agent
+            /opt/aws/bin/cfn-init --configsets default --verbose --stack ${AWS::StackName} --resource WebLaunchConfiguration --region ${AWS::Region}
 
-              #Run CloudFormation Init Scripts
-              /opt/aws/bin/cfn-init --configsets deploy_webserver --verbose --stack ${AWS::StackName} --resource WebLaunchTemplate --region ${AWS::Region}
-              /opt/aws/bin/cfn-signal --exit-code $? --stack ${AWS::StackName} --resource WebAutoScalingGroup --region ${AWS::Region}
-                       
+            #Run CloudFormation Init Scripts
+            /opt/aws/bin/cfn-init --configsets deploy_webserver --verbose --stack ${AWS::StackName} --resource WebLaunchConfiguration --region ${AWS::Region}
+            /opt/aws/bin/cfn-signal --exit-code $? --stack ${AWS::StackName} --resource WebAutoScalingGroup --region ${AWS::Region}
+            
+            
 Outputs:
   Opcachestatus:
     Value: !Join [ '', [ !Ref PublicAlbHostname, '/opcache-instanceid.php' ] ]

@@ -1,6 +1,4 @@
----
 AWSTemplateFormatVersion: 2010-09-09
-
 Description: Stack to deploy a highly available, elastic, scalable Moodle environment. This master stack launches multiple nested stacks for different tiers. !! This can only be run in certain AWS Regions - 'us-east-1', 'us-east-2', 'us-west-2', 'eu-west-1'.
 
 Metadata:

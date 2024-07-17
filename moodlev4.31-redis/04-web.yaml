@@ -164,7 +164,7 @@ Parameters:
     Default: en
   LatestAmiId :
     Type : AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-arm64-gp2
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-arm64
   NasPrivateIp:
     Description: NAS ip address
     Type: String
@@ -293,7 +293,7 @@ Resources:
   CPUAlarmLow:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      EvaluationPeriods: 3
+      EvaluationPeriods: 10
       Statistic: Average
       Threshold: 25
       AlarmDescription: Alarm if CPU too low
@@ -313,7 +313,6 @@ Resources:
       AWS::CloudFormation::Init:
         configSets:
           deploy_webserver:
-            - install_logs
             - install_webserver
             - setup_webserver_tuning
             - apply_webserver_tuning
@@ -485,24 +484,51 @@ Resources:
                   fi
                 - !Sub |
                   #!/bin/bash -xe
-                  amazon-linux-extras install -y php7.3
-                  #edit date 11/4/2023 for install sodium lib. 
-                  yum install -y awslogs httpd php-mysqlnd php-gd php-soap php-intl php-mbstring php-xmlrpc php-zip php-pear re2c php-devel libsodium libsodium-devel gcc
-                  pecl install libsodium 
-                  echo 'extension=sodium.so' >> /etc/php.ini
+                  dnf install -y php8.2 php-gd php-soap php-intl php-mbstring php-xml php-opcache php-fpm php-pgsql php-mysqlnd mod_fcgid gcc
+                  # Enable crontab on Amazon Linux 2023
+                  dnf install -y cronie
+                  systemctl enable crond
+                  systemctl start crond
+
                   #add new for test deploy 06/09/23 for fix proxy timeout 60s
-                  yum install mod_fcgid -y
                   touch /etc/httpd/conf.modules.d/00-proxy_timeout.conf
                   echo 'Timeout 600' >> /etc/httpd/conf.modules.d/00-proxy_timeout.conf
                   echo 'ProxyTimeout 600' >> /etc/httpd/conf.modules.d/00-proxy_timeout.conf
 
+                  # Below to be able to compile zip.so for the PHP Zip library that's not in the available packages...
+                  dnf install -y php8.2-devel php-pear libzip libzip-devel
+                  pecl install zip
+                  echo "extension=zip.so;" > /etc/php.d/50-zip.ini
+
+                  # Install Sodium
+                  dnf install -y gcc
+                  wget https://download.libsodium.org/libsodium/releases/LATEST.tar.gz
+                  tar -xvzf LATEST.tar.gz
+                  cd libsodium-stable
+                  env CFLAGS="$CFLAGS -march=armv8-a+crypto+aes" ./configure
+                  make && make check
+                  make install
+                  #pecl install -f libsodium
+                  echo "extension=sodium.so;" > /etc/php.d/50-sodium.ini
+                  cd ..
+
+                  #install redis extension by taweesak date 16/12/2566
+                  #dnf install -y git
+                  #git clone https://github.com/phpredis/phpredis.git
+                  #cd phpredis
+                  #phpize
+                  #./configure
+                  #make && make install
+                  #echo "extension=redis.so;" > /etc/php.d/50-redis.ini
+
                   #Add revise date 06/09/23
                   sed -i 's/memory_limit =.*/memory_limit = 2048M/' /etc/php.ini
                   sed -i 's/max_execution_time =.*/max_execution_time = 600/' /etc/php.ini
-                  sed -i 's/; max_input_vars =.*/max_input_vars = 5000/' /etc/php.ini
+                  sed -i 's/;max_input_vars =.*/max_input_vars = 5000/' /etc/php.ini
                   sed -i 's/max_input_time =.*/max_input_time = 600/' /etc/php.ini
                   sed -i 's/post_max_size =.*/post_max_size = 1024M/' /etc/php.ini
                   sed -i 's/upload_max_filesize =.*/upload_max_filesize = 1024M/' /etc/php.ini
+
                   if [ ! -f /etc/httpd/conf.d/moodle.conf ]; then                    
                     touch /etc/httpd/conf.d/moodle.conf
                     echo 'ServerName 127.0.0.1:80' >> /etc/httpd/conf.d/moodle.conf
@@ -677,7 +703,7 @@ Resources:
                 ; forget to tweak pm.* to fit your needs.
                 ; Note: Used when pm is set to 'static', 'dynamic' or 'ondemand'
                 ; Note: This value is mandatory.
-                pm.max_children = 742
+                pm.max_children = 100
 
                 ; The number of child processes created on startup.
                 ; Note: Used only when pm is set to 'dynamic'
@@ -1384,74 +1410,7 @@ Resources:
               command: ./apply-tuning.sh
               cwd: /tmp
               ignoreErrors: false   
-        install_logs:
-          packages:
-            yum:
-              awslogs: []
-          files:
-            /etc/awslogs/awslogs.conf:
-              content: !Sub |
-                [general]
-                state_file= /var/awslogs/state/agent-state
-                
-                [/var/log/cloud-init.log]
-                file = /var/log/cloud-init.log
-                log_group_name = ${Logs}
-                log_stream_name = {instance_id}/cloud-init.log
-                datetime_format = 
-                
-                [/var/log/cloud-init-output.log]
-                file = /var/log/cloud-init-output.log
-                log_group_name = ${Logs}
-                log_stream_name = {instance_id}/cloud-init-output.log
-                datetime_format = 
-                
-                [/var/log/cfn-init.log]
-                file = /var/log/cfn-init.log
-                log_group_name = ${Logs}
-                log_stream_name = {instance_id}/cfn-init.log
-                datetime_format = 
-                
-                [/var/log/cfn-hup.log]
-                file = /var/log/cfn-hup.log
-                log_group_name = ${Logs}
-                log_stream_name = {instance_id}/cfn-hup.log
-                datetime_format = 
-                
-                [/var/log/cfn-wire.log]
-                file = /var/log/cfn-wire.log
-                log_group_name = ${Logs}
-                log_stream_name = {instance_id}/cfn-wire.log
-                datetime_format = 
-                
-                [/var/log/httpd]
-                file = /var/log/httpd/*
-                log_group_name = ${Logs}
-                log_stream_name = {instance_id}/httpd
-                datetime_format = %d/%b/%Y:%H:%M:%S
-                
-              mode: '000444'
-              owner: root
-              group: root
-            /etc/awslogs/awscli.conf:
-              content: !Sub |
-                [plugins]
-                cwlogs = cwlogs
-                [default]
-                region = ${AWS::Region}
-              mode: '000444'
-              owner: root
-              group: root
-          commands:
-            01_create_state_directory:
-              command: mkdir -p /var/awslogs/state
-          services:
-            sysvinit:
-              awslogsd:
-                enabled: 'true'
-                ensureRunning: 'true'
-                files: /etc/awslogs/awslogs.conf
-              
+
         install_aws_ini:
           commands:
             install_aws_ini:
@@ -1612,13 +1571,18 @@ Resources:
                   // Configure Session Cache
                   $SessionEndpoint = '${ElastiCacheClusterEndpointAddress}';
                   if ($SessionEndpoint != '') {
-                    $CFG->dbsessions = false;
-                    $CFG->session_handler_class = '\core\session\memcached';
-                    $CFG->session_memcached_save_path = $SessionEndpoint;
-                    $CFG->session_memcached_prefix = 'memc.sess.key.';
-                    $CFG->session_memcached_acquire_lock_timeout = 120;
-                    $CFG->session_memcached_lock_expire = 60;
-                    $CFG->session_memcached_lock_retry_sleep = 150;
+                    $CFG->session_redis_host = $SessionEndpoint;
+                    $CFG->session_handler_class = '\core\session\redis';
+                    $CFG->session_redis_port = 6379;                     // Optional.
+                    $CFG->session_redis_database = 0;                    // Optional, default is db 0.
+                    //$CFG->session_redis_auth = '';                       // Optional, default is don't set one.
+                    //$CFG->session_redis_prefix = '';                     // Optional, default is don't set one.
+                    $CFG->session_redis_acquire_lock_timeout = 120;      // Default is 2 minutes.
+                    $CFG->session_redis_acquire_lock_warn = 0;           // If set logs early warning if a lock has not been acquried.
+                    $CFG->session_redis_lock_expire = 7200;              // Optional, defaults to session timeout.
+                    $CFG->session_redis_lock_retry = 100;                // Optional wait between lock attempts in ms, default is 100.
+                    $CFG->session_redis_serializer_use_igbinary = false; // Optional, default is PHP builtin serializer.
+                    $CFG->session_redis_compressor = 'none';       
                   }
                   //@error_reporting(E_ALL | E_STRICT);   // NOT FOR PRODUCTION SERVERS!
                   //@ini_set('display_errors', '1');         // NOT FOR PRODUCTION SERVERS!
@@ -1648,30 +1612,22 @@ Resources:
               cwd: /tmp
               ignoreErrors: false
         install_cacheclient:
-          packages:
-            yum:
-              gcc-c++: []  
+          #packages:
+            #dnf:
+              #gcc-c++: []  
           files:
             /tmp/install_cacheclient.sh:
               content:
                 !Sub |
                   #!/bin/bash -xe
-                  
-                  #Install memcached and then remove it. Memcached is not actually needed. We install amazon-elasticache-cluster-client.so instead. However Moodle does not detect memcached is installed. Therefore, this tricks Moodle into thinking it is installed.
-                  sudo yum install -y php-pecl-memcached
-                  sudo yum remove -y php-pecl-memcached
-
-                  #Install elasticache-cluster-client.so
-                  wget -P /tmp/ https://elasticache-downloads.s3.amazonaws.com/ClusterClient/PHP-7.3/latest-64bit-arm
-                  tar -xf '/tmp/latest-64bit-arm.tar.gz'
-                  cp '/tmp/amazon-elasticache-cluster-client.so' /usr/lib64/php/modules/
-                  if [ ! -f /etc/php.d/50-memcached.ini ]; then
-                      touch /etc/php.d/50-memcached.ini
-                  fi
-                  echo 'extension=/usr/lib64/php/modules/amazon-elasticache-cluster-client.so;' >> /etc/php.d/50-memcached.ini
-                  echo 'extension=igbinary.so;' >> /etc/php.d/50-memcached.ini
-                  #update Moodle source to use DYNAMIC_CLIENT_MODE so Moodle can detect changes to the elasticache cluster membership
-                  sed -i '/\$this->options\[Memcached::OPT_BUFFER_WRITES\] = \$bufferwrites;/a \ \ \ \ \ \ \ \ $this->options[Memcached::OPT_CLIENT_MODE] = Memcached::DYNAMIC_CLIENT_MODE;' /var/www/moodledata/cache/stores/memcached/lib.php
+                  #install redis extension by taweesak date 12/07/2024
+                  dnf install -y git
+                  git clone https://github.com/phpredis/phpredis.git
+                  cd phpredis
+                  phpize
+                  ./configure
+                  make && make install
+                  echo "extension=redis.so;" > /etc/php.d/50-redis.ini
                   
               mode: 000500
               owner: root
@@ -1682,9 +1638,9 @@ Resources:
               cwd: /tmp
               ignoreErrors: false
         install_opcache:
-          packages:
-            yum:
-              php-opcache: []
+          #ackages:
+            #dnf:
+              #php-opcache: []
           files:
             /tmp/install_opcache.sh:
               content:
@@ -1738,7 +1694,7 @@ Resources:
           "Fn::Base64":
             !Sub |
               #!/bin/bash -xe
-              yum update -y
+              dnf update -y
 
               # add new config date time 07/09/2023
               timedatectl
@@ -1756,7 +1712,7 @@ Resources:
               echo '${NasPrivateIp}:/moodledata /var/www/moodledata  nfs nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2  0 0' >> /etc/fstab
 
               #Run CloudFormation Init Script to install CloudWatch Agent
-              yum install -y amazon-cloudwatch-agent
+              dnf install -y amazon-cloudwatch-agent
               /opt/aws/bin/cfn-init --configsets default --verbose --stack ${AWS::StackName} --resource WebLaunchTemplate --region ${AWS::Region}
 
               #Run CloudFormation Init Scripts
